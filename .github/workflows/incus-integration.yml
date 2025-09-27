@@ -56,7 +56,7 @@ jobs:
     - name: Run NixOS Incus Integration Test
       run: |
         # Run the NixOS test with timeout
-        timeout 1800 nix flake check --show-trace
+        timeout 1800 nix flake check --show-trace -L
       continue-on-error: ${{ github.event.inputs.skip_integration == 'true' }}
       env:
         # Increase verbosity for debugging
