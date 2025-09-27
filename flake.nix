@@ -14,8 +14,42 @@
     flake-utils.lib.eachDefaultSystem (system:
       let
         pkgs = nixpkgs.legacyPackages.${system};
+
+        # Build the sandbox package
+        sandbox-package = pkgs.buildNpmPackage {
+          pname = "gitwit-sandbox";
+          version = "1.0.3";
+
+          src = ./.;
+
+          npmDepsHash = "sha256-iZdppZilvG6mlMPS0AioIbNzpaJj00+ewZDjZgVhfoA=";
+
+          # Build script
+          buildPhase = ''
+            runHook preBuild
+            npm run build
+            runHook postBuild
+          '';
+
+          # Install the built package
+          installPhase = ''
+            runHook preInstall
+            mkdir -p $out
+            cp -r dist $out/
+            cp -r node_modules $out/
+            cp package.json $out/
+            runHook postInstall
+          '';
+
+          meta = with pkgs.lib; {
+            description = "A unified interface for Linux-based cloud sandbox providers";
+            license = licenses.mit;
+          };
+        };
       in
       {
+        packages.default = sandbox-package;
+
         devShells.default = pkgs.mkShell {
           buildInputs = with pkgs; [
             nodejs_22
@@ -31,6 +65,17 @@
             echo "Java version: $(java -version 2>&1 | head -n1)"
             echo "Available tools: nodejs, java, python3, curl, wget"
           '';
+        };
+
+        checks.incus-integration = import ./nixos-test.nix {
+          inherit pkgs;
+          lib = pkgs.lib;
+          sandboxPackage = sandbox-package;
+        };
+
+        apps.test-incus-integration = {
+          type = "app";
+          program = "${self.checks.${system}.incus-integration}/bin/nixos-test-driver";
         };
       }
     );

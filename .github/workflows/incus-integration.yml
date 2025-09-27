@@ -1,0 +1,113 @@
+name: Incus Integration Tests (NixOS)
+
+on:
+  push:
+    branches: [ "**" ]
+    paths:
+      - 'src/providers/incus.ts'
+      - 'src/examples/incus.ts'
+      - 'tests/incus-integration.test.js'
+      - 'incus-api.yaml'
+      - 'nixos-test.nix'
+      - 'flake.nix'
+      - '.github/workflows/incus-integration.yml'
+  pull_request:
+    branches: [ "**" ]
+    paths:
+      - 'src/providers/incus.ts'
+      - 'src/examples/incus.ts'
+      - 'tests/incus-integration.test.js'
+      - 'incus-api.yaml'
+      - 'nixos-test.nix'
+      - 'flake.nix'
+      - '.github/workflows/incus-integration.yml'
+  workflow_dispatch:
+    inputs:
+      skip_integration:
+        description: 'Skip integration tests (dry run)'
+        type: boolean
+        default: false
+
+jobs:
+  nixos-incus-integration:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Install Nix
+      uses: cachix/install-nix-action@v27
+      with:
+        github_access_token: ${{ secrets.GITHUB_TOKEN }}
+        nix_path: nixpkgs=channel:nixos-unstable
+
+    - name: Enable Nix Flakes
+      run: |
+        mkdir -p ~/.config/nix
+        echo "experimental-features = nix-command flakes" >> ~/.config/nix/nix.conf
+
+    - name: Setup Nix Cache
+      uses: cachix/cachix-action@v15
+      with:
+        name: devenv
+
+    - name: Enable KVM support
+      run: |
+        # Enable KVM support for NixOS VM testing
+        echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+        sudo udevadm control --reload-rules
+        sudo udevadm trigger --name-match=kvm
+
+    - name: Build sandbox package
+      run: nix build .#default --show-trace
+      continue-on-error: ${{ github.event.inputs.skip_integration == 'true' }}
+
+    - name: Run NixOS Incus Integration Test
+      run: |
+        # Run the NixOS test with timeout
+        timeout 1800 nix flake check --show-trace
+      continue-on-error: ${{ github.event.inputs.skip_integration == 'true' }}
+      env:
+        # Increase verbosity for debugging
+        NIX_LOG: debug
+
+
+    - name: Collect test results
+      if: always()
+      run: |
+        # Create results directory
+        mkdir -p test-results
+
+        # Check if any test files were created
+        find /tmp -name "*test*" -type f -exec cp {} test-results/ \; 2>/dev/null || true
+        find . -name "*.log" -type f -exec cp {} test-results/ \; 2>/dev/null || true
+
+        # Create a summary
+        echo "# NixOS Incus Integration Test Results" > test-results/summary.md
+        echo "- Test run: $(date)" >> test-results/summary.md
+        echo "- Branch: ${{ github.ref_name }}" >> test-results/summary.md
+        echo "- Commit: ${{ github.sha }}" >> test-results/summary.md
+
+    - name: Test Summary
+      if: always()
+      run: |
+        if [ "${{ github.event.inputs.skip_integration }}" = "true" ]; then
+          echo "⚠️ Incus integration tests were run in dry-run mode"
+        elif [ "${{ job.status }}" = "success" ]; then
+          echo "✅ NixOS Incus integration tests completed successfully"
+          echo "The tests ran in a complete NixOS VM with Incus configured and operational"
+        else
+          echo "❌ NixOS Incus integration tests failed"
+          echo "Check the logs above for detailed error information"
+        fi
+
+    - name: Upload test results
+      if: always()
+      uses: actions/upload-artifact@v4
+      with:
+        name: nixos-incus-test-results
+        path: |
+          test-results/
+          *.log
+        retention-days: 7
