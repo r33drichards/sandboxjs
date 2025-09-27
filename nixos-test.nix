@@ -105,9 +105,6 @@ in pkgs.testers.nixosTest {
   };
 
   testScript = ''
-    import json
-    import time
-
     def wait_for_incus():
         """Wait for Incus to be ready"""
         machine.wait_for_unit("incus.service")
