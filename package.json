@@ -18,7 +18,9 @@
     "build": "tsc",
     "prepublishOnly": "npm run build",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "generate-client": "openapi-generator-cli generate -i incus-api.yaml -g typescript-axios -o src/generated/incus-client --skip-validate-spec --additional-properties=npmName=incus-client,supportsES6=true,enumPropertyNaming=original,modelPropertyNaming=original",
+    "generate-client-from-url": "openapi-generator-cli generate -i $SPEC_URL -g typescript-axios -o src/generated/incus-client --skip-validate-spec --additional-properties=npmName=incus-client,supportsES6=true,enumPropertyNaming=original,modelPropertyNaming=original"
   },
   "keywords": [],
   "author": "",
@@ -26,6 +28,7 @@
   "devDependencies": {
     "@types/node": "^24.0.3",
     "@types/ssh2": "^1.15.5",
+    "@openapitools/openapi-generator-cli": "^2.14.1",
     "typescript": "^5.8.3",
     "vitest": "^3.2.4"
   },
@@ -34,6 +37,7 @@
     "@daytonaio/sdk": "^0.27.1",
     "@e2b/cli": "^2.1.0",
     "@e2b/code-interpreter": "^1.2.0-beta.4",
+    "axios": "^1.7.9",
     "docker-file-parser": "^1.0.7",
     "modal": "^0.3.15",
     "ssh2": "^1.17.0"
