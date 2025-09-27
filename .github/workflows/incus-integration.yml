@@ -1,16 +1,6 @@
 name: Incus Integration Tests (NixOS)
 
 on:
-  push:
-    branches: [ "**" ]
-    paths:
-      - 'src/providers/incus.ts'
-      - 'src/examples/incus.ts'
-      - 'tests/incus-integration.test.js'
-      - 'incus-api.yaml'
-      - 'nixos-test.nix'
-      - 'flake.nix'
-      - '.github/workflows/incus-integration.yml'
   pull_request:
     branches: [ "**" ]
     paths:
@@ -59,9 +49,9 @@ jobs:
         sudo udevadm control --reload-rules
         sudo udevadm trigger --name-match=kvm
 
-    - name: Build sandbox package
-      run: nix build .#default --show-trace
-      continue-on-error: ${{ github.event.inputs.skip_integration == 'true' }}
+    # - name: Build sandbox package
+    #   run: nix build .#default --show-trace
+    #   continue-on-error: ${{ github.event.inputs.skip_integration == 'true' }}
 
     - name: Run NixOS Incus Integration Test
       run: |
@@ -72,42 +62,3 @@ jobs:
         # Increase verbosity for debugging
         NIX_LOG: debug
 
-
-    - name: Collect test results
-      if: always()
-      run: |
-        # Create results directory
-        mkdir -p test-results
-
-        # Check if any test files were created
-        find /tmp -name "*test*" -type f -exec cp {} test-results/ \; 2>/dev/null || true
-        find . -name "*.log" -type f -exec cp {} test-results/ \; 2>/dev/null || true
-
-        # Create a summary
-        echo "# NixOS Incus Integration Test Results" > test-results/summary.md
-        echo "- Test run: $(date)" >> test-results/summary.md
-        echo "- Branch: ${{ github.ref_name }}" >> test-results/summary.md
-        echo "- Commit: ${{ github.sha }}" >> test-results/summary.md
-
-    - name: Test Summary
-      if: always()
-      run: |
-        if [ "${{ github.event.inputs.skip_integration }}" = "true" ]; then
-          echo "⚠️ Incus integration tests were run in dry-run mode"
-        elif [ "${{ job.status }}" = "success" ]; then
-          echo "✅ NixOS Incus integration tests completed successfully"
-          echo "The tests ran in a complete NixOS VM with Incus configured and operational"
-        else
-          echo "❌ NixOS Incus integration tests failed"
-          echo "Check the logs above for detailed error information"
-        fi
-
-    - name: Upload test results
-      if: always()
-      uses: actions/upload-artifact@v4
-      with:
-        name: nixos-incus-test-results
-        path: |
-          test-results/
-          *.log
-        retention-days: 7
