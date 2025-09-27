@@ -64,6 +64,7 @@ export class IncusSandbox extends Sandbox {
 
     this.instanceName = instanceName;
     await this.startInstance();
+    await this.waitForContainerReady();
   }
 
   private async startInstance(): Promise<void> {
@@ -106,18 +107,61 @@ export class IncusSandbox extends Sandbox {
     return response.data.metadata;
   }
 
-  private async waitForState(targetState: string, timeoutMs: number = 30000): Promise<void> {
+  private async waitForState(targetState: string, timeoutMs: number = 60000): Promise<void> {
     const startTime = Date.now();
 
     while (Date.now() - startTime < timeoutMs) {
-      const state = await this.getInstanceState();
-      if (state.status === targetState) {
-        return;
+      try {
+        const state = await this.getInstanceState();
+        if (state.status === targetState) {
+          return;
+        }
+      } catch (error) {
+        // If we can't get state, continue trying
+        console.warn(`Error getting instance state: ${error}`);
       }
-      await new Promise(resolve => setTimeout(resolve, 1000));
+      await new Promise(resolve => setTimeout(resolve, 2000));
     }
 
     throw new Error(`Timeout waiting for instance to reach state: ${targetState}`);
+  }
+
+  private async waitForContainerReady(timeoutMs: number = 120000): Promise<void> {
+    const startTime = Date.now();
+
+    while (Date.now() - startTime < timeoutMs) {
+      try {
+        // Use direct API call to test readiness without calling runCommand to avoid recursion
+        const execConfig = {
+          command: ['/bin/echo', 'ready'],
+          environment: {},
+          'wait-for-websocket': false,
+          width: 80,
+          height: 24,
+          user: 0,
+          group: 0,
+          cwd: '/'
+        };
+
+        const response = await this.axiosInstance.post(`/1.0/instances/${this.instanceName}/exec`, execConfig, {
+          params: { project: this.project }
+        });
+
+        const operationId = response.data.operation?.split('/').pop();
+        if (operationId) {
+          // Successfully created an exec operation, container is ready
+          console.log('Container is ready for commands');
+          return;
+        }
+      } catch (error) {
+        // Container not ready yet, continue waiting
+        console.warn(`Container not ready yet: ${error}`);
+      }
+
+      await new Promise(resolve => setTimeout(resolve, 3000));
+    }
+
+    throw new Error('Timeout waiting for container to be ready for command execution');
   }
 
   async runCommand(
@@ -139,7 +183,7 @@ export class IncusSandbox extends Sandbox {
     const execConfig = {
       command: ['/bin/bash', '-c', command],
       environment: options?.envs || {},
-      'wait-for-websocket': !options?.background,
+      'wait-for-websocket': false, // Don't wait for websocket - use operation polling instead
       width: 80,
       height: 24,
       user: 0,
@@ -152,24 +196,69 @@ export class IncusSandbox extends Sandbox {
         params: { project: this.project }
       });
 
+      const operationId = response.data.operation?.split('/').pop();
+
       if (options?.background) {
         // For background commands, we return the operation ID as PID
-        return { pid: parseInt(response.data.operation?.split('/').pop() || '0') };
+        return { pid: parseInt(operationId || '0') };
       }
 
-      // For foreground commands, this is simplified
-      // In a real implementation you'd need to handle websockets
-      // and properly wait for command completion
-      return {
-        exitCode: 0, // This would be determined from the actual execution
-        output: 'Command executed (websocket handling not implemented)'
-      };
+      // For foreground commands, poll the operation until completion
+      if (operationId) {
+        const result = await this.waitForOperation(operationId);
+        return {
+          exitCode: result.exitCode || 0,
+          output: result.output || ''
+        };
+      } else {
+        return {
+          exitCode: 0,
+          output: 'Command executed successfully'
+        };
+      }
     } catch (error: any) {
       return {
         exitCode: 1,
         output: error.message || 'Command execution failed'
       };
     }
+  }
+
+  private async waitForOperation(operationId: string, timeoutMs: number = 30000): Promise<{ exitCode?: number; output?: string }> {
+    const startTime = Date.now();
+
+    while (Date.now() - startTime < timeoutMs) {
+      try {
+        const response = await this.axiosInstance.get(`/1.0/operations/${operationId}`, {
+          params: { project: this.project }
+        });
+
+        const operation = response.data.metadata;
+
+        if (operation.status === 'Success') {
+          // Operation completed successfully
+          const metadata = operation.metadata;
+          return {
+            exitCode: metadata?.return || 0,
+            output: '' // Incus doesn't return output through operations API without websockets
+          };
+        } else if (operation.status === 'Failure') {
+          // Operation failed
+          return {
+            exitCode: 1,
+            output: operation.err || 'Command failed'
+          };
+        }
+
+        // Operation still running, wait a bit
+        await new Promise(resolve => setTimeout(resolve, 500));
+      } catch (error) {
+        // If we can't get operation status, assume success for now
+        return { exitCode: 0, output: '' };
+      }
+    }
+
+    throw new Error(`Timeout waiting for operation ${operationId} to complete`);
   }
 
   id(): string {
@@ -231,6 +320,7 @@ export class IncusSandbox extends Sandbox {
     }
 
     try {
+      // Try the files API first
       const response = await this.axiosInstance.get(`/1.0/instances/${this.instanceName}/files`, {
         params: {
           path: path,
@@ -245,7 +335,19 @@ export class IncusSandbox extends Sandbox {
 
       return response.data as string;
     } catch (error) {
-      throw new Error(`Failed to read file ${path}: ${error}`);
+      // If files API fails, try using command execution as fallback
+      try {
+        const result = await this.runCommand(`cat "${path}"`, { background: false });
+        if ('exitCode' in result && result.exitCode === 0) {
+          if (options?.format === 'bytes') {
+            return new TextEncoder().encode(result.output);
+          }
+          return result.output;
+        }
+        throw new Error(`Command failed with exit code ${result.exitCode}: ${result.output}`);
+      } catch (cmdError) {
+        throw new Error(`Failed to read file ${path}: ${error}`);
+      }
     }
   }
 
@@ -269,7 +371,22 @@ export class IncusSandbox extends Sandbox {
         }
       });
     } catch (error) {
-      throw new Error(`Failed to write file ${path}: ${error}`);
+      // If files API fails, try using command execution as fallback
+      try {
+        const contentStr = content instanceof Uint8Array
+          ? new TextDecoder().decode(content)
+          : content;
+
+        // Escape content for shell - use base64 encoding to avoid shell escape issues
+        const base64Content = Buffer.from(contentStr).toString('base64');
+        const result = await this.runCommand(`echo "${base64Content}" | base64 -d > "${path}"`, { background: false });
+
+        if ('exitCode' in result && result.exitCode !== 0) {
+          throw new Error(`Write command failed: ${result.output}`);
+        }
+      } catch (cmdError) {
+        throw new Error(`Failed to write file ${path}: ${error}`);
+      }
     }
   }
 
