@@ -34,7 +34,7 @@ describe('Incus Sandbox Integration Tests', () => {
     expect(sandbox.id()).toBeDefined();
     expect(typeof sandbox.id()).toBe('string');
     expect(sandbox.id()).toMatch(/^sandbox-\d+-[a-z0-9]+$/);
-  }, 60000); // Increase timeout for container creation
+  }, 120000); // Increase timeout for NixOS container creation
 
   test('create incus sandbox with custom template', async () => {
     if (!process.env.INCUS_URL && !process.env.CI) {
@@ -42,12 +42,12 @@ describe('Incus Sandbox Integration Tests', () => {
     }
 
     sandbox = await Sandbox.create('incus', {
-      template: 'ubuntu/22.04'
+      template: 'nixos/container'
     });
 
     expect(sandbox).toBeDefined();
     expect(sandbox.id()).toBeDefined();
-  }, 60000);
+  }, 120000);
 
   test('run basic command in incus sandbox', async () => {
     if (!process.env.INCUS_URL && !process.env.CI) {
@@ -62,7 +62,7 @@ describe('Incus Sandbox Integration Tests', () => {
     // This test will need to be updated when websocket implementation is complete
     expect(result).toBeDefined();
     expect(result.exitCode).toBeDefined();
-  }, 60000);
+  }, 120000);
 
   test('suspend and resume incus sandbox', async () => {
     if (!process.env.INCUS_URL && !process.env.CI) {
@@ -76,7 +76,7 @@ describe('Incus Sandbox Integration Tests', () => {
 
     // Test resume
     await expect(sandbox.resume()).resolves.not.toThrow();
-  }, 90000);
+  }, 180000);
 
   test('file operations in incus sandbox', async () => {
     if (!process.env.INCUS_URL && !process.env.CI) {
@@ -105,7 +105,7 @@ describe('Incus Sandbox Integration Tests', () => {
     // Verify deletion
     const filesAfterDelete = await sandbox.listFiles('/tmp');
     expect(filesAfterDelete.some(file => file.name === 'incus-test.txt')).toBe(false);
-  }, 60000);
+  }, 120000);
 
   test('create directory in incus sandbox', async () => {
     if (!process.env.INCUS_URL && !process.env.CI) {
@@ -120,7 +120,7 @@ describe('Incus Sandbox Integration Tests', () => {
 
     const files = await sandbox.listFiles('/tmp');
     expect(files.some(file => file.name === 'incus-test-dir' && file.type === 'directory')).toBe(true);
-  }, 60000);
+  }, 120000);
 
   test('move file in incus sandbox', async () => {
     if (!process.env.INCUS_URL && !process.env.CI) {
@@ -144,7 +144,7 @@ describe('Incus Sandbox Integration Tests', () => {
     // Verify content is preserved
     const movedContent = await sandbox.readFile(newPath);
     expect(movedContent).toBe(testContent);
-  }, 60000);
+  }, 120000);
 
   test('create incus sandbox with environment variables', async () => {
     if (!process.env.INCUS_URL && !process.env.CI) {
@@ -165,7 +165,7 @@ describe('Incus Sandbox Integration Tests', () => {
 
     // Note: Environment variable verification would require proper command execution
     // This is a placeholder until websocket implementation is complete
-  }, 60000);
+  }, 120000);
 
   test('destroy incus sandbox', async () => {
     if (!process.env.INCUS_URL && !process.env.CI) {
@@ -181,7 +181,7 @@ describe('Incus Sandbox Integration Tests', () => {
     // After destroy, the instance name should be null
     expect(() => sandbox.id()).toThrow();
     sandbox = undefined;
-  }, 60000);
+  }, 120000);
 
   test('connect to existing incus sandbox', async () => {
     if (!process.env.INCUS_URL && !process.env.CI) {
@@ -206,7 +206,7 @@ describe('Incus Sandbox Integration Tests', () => {
     // Cleanup both instances
     await sandbox1.destroy();
     sandbox = undefined; // Prevent afterEach cleanup since we already destroyed
-  }, 90000);
+  }, 180000);
 
   test('get preview URL for incus sandbox', async () => {
     if (!process.env.INCUS_URL && !process.env.CI) {
@@ -224,5 +224,5 @@ describe('Incus Sandbox Integration Tests', () => {
       // It's acceptable if network info isn't available immediately
       expect(error.message).toContain('No accessible IP address found');
     }
-  }, 60000);
+  }, 120000);
 });

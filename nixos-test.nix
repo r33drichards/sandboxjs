@@ -15,6 +15,21 @@ let
     '';
   };
 
+  # Generate NixOS container images for offline use
+  releases = import (pkgs.path + "/nixos/release.nix") {
+    configuration = {
+      # Building documentation makes the test unnecessarily take a longer time:
+      documentation.enable = lib.mkForce false;
+
+      boot.initrd.systemd.enable = false;
+    };
+  };
+
+  nixosContainerImage = {
+    metadata = releases.incusContainerMeta.${pkgs.stdenv.hostPlatform.system} + "/tarball/nixos-image-lxc-*-${pkgs.stdenv.hostPlatform.system}.tar.xz";
+    rootfs = releases.incusContainerImage.${pkgs.stdenv.hostPlatform.system} + "/nixos-lxc-image-${pkgs.stdenv.hostPlatform.system}.squashfs";
+  };
+
 in pkgs.testers.nixosTest {
   name = "incus-sandbox-integration";
 
@@ -115,9 +130,17 @@ in pkgs.testers.nixosTest {
         machine.wait_until_succeeds("incus network info incusbr0")
         machine.wait_until_succeeds("incus storage show default")
 
-    def setup_ubuntu_image():
-        """Set up Ubuntu container image for testing"""
-        machine.succeed("incus image copy images:ubuntu/22.04 local: --alias ubuntu/22.04")
+    def setup_nixos_image():
+        """Set up NixOS container image for testing (offline)"""
+        metadata = "${nixosContainerImage.metadata}"
+        rootfs = "${nixosContainerImage.rootfs}"
+
+        machine.succeed(f"incus image import {metadata} {rootfs} --alias nixos/container")
+
+    def wait_for_nixos_instance(name: str):
+        """Wait for NixOS container to be fully ready"""
+        machine.wait_until_succeeds(f"incus list | grep {name} | grep RUNNING", timeout=120)
+        machine.wait_until_succeeds(f"incus exec {name} -- systemctl is-system-running || incus exec {name} -- systemctl is-system-running --wait", timeout=120)
 
     def run_sandbox_tests():
         """Run the sandbox integration tests"""
@@ -135,7 +158,7 @@ in pkgs.testers.nixosTest {
                 cd /tmp/sandbox
                 export INCUS_URL=http://localhost:8443
                 export NODE_ENV=test
-                timeout 600 npx vitest run tests/incus-integration.test.js --reporter=verbose 2>&1
+                timeout 900 npx vitest run tests/incus-integration.test.js --reporter=verbose 2>&1
             """)
             print(f"Test results: {result}")
 
@@ -159,14 +182,18 @@ in pkgs.testers.nixosTest {
         machine.succeed("incus list")
 
     with subtest("Set up container image"):
-        setup_ubuntu_image()
+        setup_nixos_image()
         machine.succeed("incus image list")
 
     with subtest("Test basic Incus functionality"):
         # Create a test container to verify Incus is working
-        machine.succeed("incus launch ubuntu/22.04 test-container")
-        machine.wait_until_succeeds("incus list | grep test-container | grep RUNNING", timeout=60)
-        machine.succeed("incus exec test-container -- echo 'Hello from container'")
+        machine.succeed("incus launch nixos/container test-container")
+        machine.wait_until_succeeds("incus list | grep test-container | grep RUNNING", timeout=120)
+
+        # Wait for systemd to fully start in the container
+        machine.wait_until_succeeds("incus exec test-container -- systemctl is-system-running || incus exec test-container -- systemctl is-system-running --wait", timeout=120)
+
+        machine.succeed("incus exec test-container -- echo 'Hello from NixOS container'")
         machine.succeed("incus delete --force test-container")
 
     with subtest("Run sandbox integration tests"):

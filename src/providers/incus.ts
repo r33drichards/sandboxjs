@@ -49,7 +49,7 @@ export class IncusSandbox extends Sandbox {
       type: 'container',
       source: {
         type: 'image',
-        alias: createOptions?.template || 'ubuntu/22.04'
+        alias: createOptions?.template || 'nixos/container'
       },
       config: createOptions?.envs ?
         Object.entries(createOptions.envs).reduce((acc, [key, value]) => {
