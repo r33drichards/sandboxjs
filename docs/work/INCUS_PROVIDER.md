@@ -197,6 +197,17 @@ nix-shell
 
 This provides all necessary dependencies including Node.js, Java (for OpenAPI generator), and other development tools.
 
+
+### run integration tests 
+
+the incus integration is shipped with the ability to run integration tests via nixos integration test framework.
+r
+
+running on apple silicon 
+```
+ nix build .#checks.aarch64-linux.incus-integration -L --show-trace
+ ```
+
 ## Conclusion
 
 The Incus provider successfully extends sandboxjs with support for Incus container management, providing a robust foundation for containerized development environments. While some advanced features like WebSocket-based terminals are simplified, the core functionality is complete and ready for use.

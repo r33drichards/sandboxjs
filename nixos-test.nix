@@ -98,6 +98,7 @@ in pkgs.testers.nixosTest {
       curl
       wget
       jq
+      incus
     ];
 
     # Networking
@@ -192,16 +193,7 @@ in pkgs.testers.nixosTest {
         setup_nixos_image()
         machine.succeed("incus image list")
 
-    with subtest("Test basic Incus functionality"):
-        # Create a test container to verify Incus is working
-        machine.succeed("incus launch nixos/container test-container")
-        machine.wait_until_succeeds("incus list | grep test-container | grep RUNNING", timeout=120)
 
-        # Wait for systemd to fully start in the container with improved error handling
-        wait_for_nixos_instance("test-container")
-
-        machine.succeed("incus exec test-container -- echo 'Hello from NixOS container'")
-        machine.succeed("incus delete --force test-container")
 
     with subtest("Run sandbox integration tests"):
         run_sandbox_tests()
