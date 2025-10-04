@@ -22,6 +22,37 @@ let
       documentation.enable = lib.mkForce false;
 
       boot.initrd.systemd.enable = false;
+
+      # Essential packages for container functionality
+      environment.systemPackages = with pkgs; [
+        coreutils     # ls, mkdir, mv, rm, cat, echo, etc.
+        util-linux    # various system utilities
+        bash          # ensure bash is available
+        gawk          # awk for text processing
+        gnugrep       # grep command
+        gnused        # sed command
+        findutils     # find, xargs
+        procps        # ps, top, etc.
+        which         # which command
+        file          # file type detection
+        curl          # network utilities
+        gnutar        # tar command
+        gzip          # compression
+        base64        # base64 encoding/decoding (used by file operations)
+      ];
+
+      # Ensure proper PATH is set for all users
+      environment.extraInit = ''
+        export PATH="/run/current-system/sw/bin:/run/current-system/sw/sbin:$PATH"
+      '';
+
+      # Configure shell environment
+      programs.bash.enable = true;
+      
+      # Ensure systemd is properly configured
+      systemd.extraConfig = ''
+        DefaultTimeoutStopSec=30s
+      '';
     };
   };
 

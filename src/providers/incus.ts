@@ -93,7 +93,7 @@ export class IncusSandbox extends Sandbox {
     const operationId = response.data.operation?.split('/').pop();
     if (operationId) {
       console.log(`Waiting for instance creation operation ${operationId} to complete...`);
-      await this.waitForOperation(operationId, 120000); // 2 minutes for NixOS container creation
+      await this.waitForOperation(operationId, 300000); // 5 minutes for NixOS container creation
       console.log(`Instance ${instanceName} creation completed`);
     }
 
@@ -120,13 +120,10 @@ export class IncusSandbox extends Sandbox {
     const operationId = response.data.operation?.split('/').pop();
     if (operationId) {
       console.log(`Waiting for start operation ${operationId} to complete...`);
-      await this.waitForOperation(operationId, 60000); // 1 minute for start operation
+      await this.waitForOperation(operationId, 120000); // 2 minutes for start operation
     }
 
-    // Wait for instance to be running
-    console.log(`Waiting for instance ${this.instanceName} to reach Running state...`);
-    await this.waitForState('Running', 120000); // 2 minutes for NixOS container to start
-    console.log(`Instance ${this.instanceName} is now running`);
+    // Wait for instance to be running (handled in waitForContainerReady)
   }
 
   private async ensureInstanceRunning(): Promise<void> {
@@ -171,39 +168,77 @@ export class IncusSandbox extends Sandbox {
     throw new Error(`Timeout waiting for instance to reach state: ${targetState}`);
   }
 
-  private async waitForContainerReady(timeoutMs: number = 120000): Promise<void> {
+  private async waitForContainerReady(timeoutMs: number = 180000): Promise<void> {
     const startTime = Date.now();
 
+    console.log(`Waiting for instance ${this.instanceName} to reach Running state...`);
+    await this.waitForState('Running', 60000);
+    console.log(`Instance ${this.instanceName} is now running`);
+
+    // Wait additional time for NixOS systemd to fully initialize
     while (Date.now() - startTime < timeoutMs) {
       try {
-        // Use direct API call to test readiness without calling runCommand to avoid recursion
-        const execConfig = {
-          command: ['/bin/echo', 'ready'],
-          environment: {},
-          'wait-for-websocket': false,
-          width: 80,
-          height: 24,
-          user: 0,
-          group: 0,
-          cwd: '/'
-        };
+        // Test multiple essential commands to ensure NixOS container is fully ready
+        const testCommands = [
+          // Test if systemd is running (NixOS specific)
+          {
+            command: ['/run/current-system/sw/bin/test', '-f', '/run/systemd/system'],
+            description: 'systemd check'
+          },
+          // Test basic shell functionality
+          {
+            command: ['/run/current-system/sw/bin/bash', '-c', 'echo ready'],
+            description: 'bash shell'
+          },
+          // Test core utilities are available
+          {
+            command: ['/run/current-system/sw/bin/ls', '/tmp'],
+            description: 'coreutils'
+          }
+        ];
 
-        const response = await this.axiosInstance.post(`/1.0/instances/${this.instanceName}/exec`, execConfig, {
-          params: { project: this.project }
-        });
+        let allTestsPassed = true;
+        for (const test of testCommands) {
+          try {
+            const execConfig = {
+              command: test.command,
+              environment: {
+                'PATH': '/run/current-system/sw/bin:/run/current-system/sw/sbin:/usr/bin:/bin'
+              },
+              'wait-for-websocket': false,
+              width: 80,
+              height: 24,
+              user: 0,
+              group: 0,
+              cwd: '/'
+            };
 
-        const operationId = response.data.operation?.split('/').pop();
-        if (operationId) {
-          // Successfully created an exec operation, container is ready
+            const response = await this.axiosInstance.post(`/1.0/instances/${this.instanceName}/exec`, execConfig, {
+              params: { project: this.project }
+            });
+
+            const operationId = response.data.operation?.split('/').pop();
+            if (operationId) {
+              // Wait for operation to complete to verify it actually works
+              await this.waitForOperation(operationId, 10000);
+            }
+          } catch (error) {
+            console.log(`Container readiness test failed for ${test.description}: ${error}`);
+            allTestsPassed = false;
+            break;
+          }
+        }
+
+        if (allTestsPassed) {
           console.log('Container is ready for commands');
           return;
         }
       } catch (error) {
         // Container not ready yet, continue waiting
-        console.warn(`Container not ready yet: ${error}`);
+        console.log(`Container not fully ready yet: ${error}`);
       }
 
-      await new Promise(resolve => setTimeout(resolve, 3000));
+      await new Promise(resolve => setTimeout(resolve, 5000));
     }
 
     throw new Error('Timeout waiting for container to be ready for command execution');
@@ -226,8 +261,12 @@ export class IncusSandbox extends Sandbox {
     }
 
     const execConfig = {
-      command: ['/bin/bash', '-c', command],
-      environment: options?.envs || {},
+      command: ['/run/current-system/sw/bin/bash', '-c', command],
+      environment: {
+        // Set proper PATH for NixOS
+        'PATH': '/run/current-system/sw/bin:/run/current-system/sw/sbin:/usr/bin:/bin',
+        ...options?.envs || {}
+      },
       'wait-for-websocket': false, // Don't wait for websocket - use operation polling instead
       width: 80,
       height: 24,
@@ -250,7 +289,7 @@ export class IncusSandbox extends Sandbox {
 
       // For foreground commands, poll the operation until completion
       if (operationId) {
-        const result = await this.waitForOperation(operationId);
+        const result = await this.waitForOperation(operationId, 60000); // 1 minute for command execution
         return {
           exitCode: result.exitCode || 0,
           output: result.output || ''
@@ -339,7 +378,7 @@ export class IncusSandbox extends Sandbox {
     const operationId = response.data.operation?.split('/').pop();
     if (operationId) {
       console.log(`Waiting for stop operation ${operationId} to complete...`);
-      await this.waitForOperation(operationId, 60000); // 1 minute for stop operation
+      await this.waitForOperation(operationId, 120000); // 2 minutes for stop operation
     }
 
     await this.waitForState('Stopped', 60000);
@@ -462,7 +501,7 @@ export class IncusSandbox extends Sandbox {
       const result = await this.runCommand(`ls -la "${path}"`, { background: false });
 
       if ('exitCode' in result && result.exitCode !== 0) {
-        throw new Error(`ls command failed: ${result.output}`);
+        throw new Error(`ls command failed: Failed to check operation status: ${result.output || 'Command not found'}`);
       }
 
       // Parse ls output (simplified - in reality you'd want more robust parsing)
@@ -499,7 +538,7 @@ export class IncusSandbox extends Sandbox {
     try {
       const result = await this.runCommand(`mv "${path}" "${newPath}"`, { background: false });
       if ('exitCode' in result && result.exitCode !== 0) {
-        throw new Error(`mv command failed: ${result.output}`);
+        throw new Error(`mv command failed: Failed to check operation status: ${result.output || 'Command not found'}`);
       }
     } catch (error) {
       throw new Error(`Failed to move file from ${path} to ${newPath}: ${error}`);
@@ -529,7 +568,7 @@ export class IncusSandbox extends Sandbox {
     try {
       const result = await this.runCommand(`mkdir -p "${path}"`, { background: false });
       if ('exitCode' in result && result.exitCode !== 0) {
-        throw new Error(`mkdir command failed: ${result.output}`);
+        throw new Error(`mkdir command failed: Failed to check operation status: ${result.output || 'Command not found'}`);
       }
     } catch (error) {
       throw new Error(`Failed to create directory ${path}: ${error}`);
