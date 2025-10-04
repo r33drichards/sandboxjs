@@ -160,11 +160,20 @@ in pkgs.testers.nixosTest {
             "journalctl -u incus-webui.service -o cat | grep 'Web server running at: http://' | tail -n 1"
         )
         
-        # The URL format is like: Web server running at: http://127.0.0.1:XXXXX/ui?access_token=YYYYY
+        # The URL format is like: Web server running at: http://127.0.0.1:XXXXX/ui?auth_token=YYYYY
         import re
-        match = re.search(r'http://[^/]+:\d+/ui\?access_token=[^\\s]+', output)
+        match = re.search(r'http://[^/]+:\d+/ui\?auth_token=[^\s]+', output)
         if match:
-            return match.group(0)
+            # Extract just the base URL and token
+            full_url = match.group(0)
+            # Parse to get base URL and token separately
+            base_match = re.search(r'(http://[^/]+:\d+)', full_url)
+            token_match = re.search(r'auth_token=([^&\s]+)', full_url)
+            if base_match and token_match:
+                # Return base URL with token as query parameter
+                return f"{base_match.group(1)}?auth_token={token_match.group(1)}"
+            else:
+                return full_url
         else:
             # Fallback to just the base URL without token
             match = re.search(r'http://[^/]+:\d+', output)

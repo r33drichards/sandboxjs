@@ -22,7 +22,7 @@ export class IncusSandbox extends Sandbox {
     // If INCUS_URL env var is set and no options provided, parse it
     if (!options && process.env.INCUS_URL) {
       const urlParts = new URL(process.env.INCUS_URL);
-      const token = urlParts.searchParams.get('access_token');
+      const token = urlParts.searchParams.get('auth_token');
       const baseURL = `${urlParts.protocol}//${urlParts.host}`;
       
       this.connectionOptions = {
@@ -40,16 +40,20 @@ export class IncusSandbox extends Sandbox {
     const axiosConfig: any = {
       baseURL: this.connectionOptions.baseURL,
       timeout: 30000,
+      withCredentials: true, // Enable cookies
     };
 
-    // Add authentication token if provided
-    if (this.connectionOptions.token) {
-      axiosConfig.headers = {
-        'Authorization': `Bearer ${this.connectionOptions.token}`
-      };
-    }
-
     this.axiosInstance = axios.create(axiosConfig);
+
+    // Add authentication cookie if provided
+    if (this.connectionOptions.token) {
+      // Add request interceptor to include auth cookie
+      this.axiosInstance.interceptors.request.use((config) => {
+        // Set cookie header for authentication
+        config.headers['Cookie'] = `auth_token=${this.connectionOptions.token}`;
+        return config;
+      });
+    }
   }
 
   async init(id?: string, createOptions?: CreateSandboxOptions): Promise<void> {
