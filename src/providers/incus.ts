@@ -84,9 +84,18 @@ export class IncusSandbox extends Sandbox {
         }, {} as Record<string, string>) : {}
     };
 
-    await this.axiosInstance.post('/1.0/instances', instanceConfig, {
+    // Create the instance and wait for the operation to complete
+    const response = await this.axiosInstance.post('/1.0/instances', instanceConfig, {
       params: { project: this.project }
     });
+
+    // Extract operation ID from response and wait for completion
+    const operationId = response.data.operation?.split('/').pop();
+    if (operationId) {
+      console.log(`Waiting for instance creation operation ${operationId} to complete...`);
+      await this.waitForOperation(operationId, 120000); // 2 minutes for NixOS container creation
+      console.log(`Instance ${instanceName} creation completed`);
+    }
 
     this.instanceName = instanceName;
     await this.startInstance();
@@ -102,12 +111,22 @@ export class IncusSandbox extends Sandbox {
       action: 'start'
     };
 
-    await this.axiosInstance.put(`/1.0/instances/${this.instanceName}/state`, startConfig, {
+    console.log(`Starting instance ${this.instanceName}...`);
+    const response = await this.axiosInstance.put(`/1.0/instances/${this.instanceName}/state`, startConfig, {
       params: { project: this.project }
     });
 
+    // Extract operation ID from response and wait for completion
+    const operationId = response.data.operation?.split('/').pop();
+    if (operationId) {
+      console.log(`Waiting for start operation ${operationId} to complete...`);
+      await this.waitForOperation(operationId, 60000); // 1 minute for start operation
+    }
+
     // Wait for instance to be running
-    await this.waitForState('Running');
+    console.log(`Waiting for instance ${this.instanceName} to reach Running state...`);
+    await this.waitForState('Running', 120000); // 2 minutes for NixOS container to start
+    console.log(`Instance ${this.instanceName} is now running`);
   }
 
   private async ensureInstanceRunning(): Promise<void> {
@@ -252,6 +271,7 @@ export class IncusSandbox extends Sandbox {
 
   private async waitForOperation(operationId: string, timeoutMs: number = 30000): Promise<{ exitCode?: number; output?: string }> {
     const startTime = Date.now();
+    let lastStatus = '';
 
     while (Date.now() - startTime < timeoutMs) {
       try {
@@ -261,30 +281,37 @@ export class IncusSandbox extends Sandbox {
 
         const operation = response.data.metadata;
 
+        // Log status changes
+        if (operation.status !== lastStatus) {
+          console.log(`Operation ${operationId} status: ${operation.status}`);
+          lastStatus = operation.status;
+        }
+
         if (operation.status === 'Success') {
           // Operation completed successfully
           const metadata = operation.metadata;
+          console.log(`Operation ${operationId} completed successfully`);
           return {
             exitCode: metadata?.return || 0,
             output: '' // Incus doesn't return output through operations API without websockets
           };
         } else if (operation.status === 'Failure') {
           // Operation failed
-          return {
-            exitCode: 1,
-            output: operation.err || 'Command failed'
-          };
+          const errorMsg = operation.err || 'Operation failed';
+          console.error(`Operation ${operationId} failed: ${errorMsg}`);
+          throw new Error(`Operation failed: ${errorMsg}`);
         }
 
         // Operation still running, wait a bit
         await new Promise(resolve => setTimeout(resolve, 500));
-      } catch (error) {
-        // If we can't get operation status, assume success for now
-        return { exitCode: 0, output: '' };
+      } catch (error: any) {
+        console.error(`Error checking operation ${operationId} status:`, error.message);
+        // Don't assume success on error - throw the error
+        throw new Error(`Failed to check operation status: ${error.message}`);
       }
     }
 
-    throw new Error(`Timeout waiting for operation ${operationId} to complete`);
+    throw new Error(`Timeout waiting for operation ${operationId} to complete after ${timeoutMs}ms`);
   }
 
   id(): string {
@@ -303,11 +330,20 @@ export class IncusSandbox extends Sandbox {
       action: 'stop'
     };
 
-    await this.axiosInstance.put(`/1.0/instances/${this.instanceName}/state`, stopConfig, {
+    console.log(`Stopping instance ${this.instanceName}...`);
+    const response = await this.axiosInstance.put(`/1.0/instances/${this.instanceName}/state`, stopConfig, {
       params: { project: this.project }
     });
 
-    await this.waitForState('Stopped');
+    // Extract operation ID from response and wait for completion
+    const operationId = response.data.operation?.split('/').pop();
+    if (operationId) {
+      console.log(`Waiting for stop operation ${operationId} to complete...`);
+      await this.waitForOperation(operationId, 60000); // 1 minute for stop operation
+    }
+
+    await this.waitForState('Stopped', 60000);
+    console.log(`Instance ${this.instanceName} is now stopped`);
   }
 
   async resume(): Promise<void> {
