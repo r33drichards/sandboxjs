@@ -48,6 +48,7 @@ in pkgs.testers.nixosTest {
       incus = {
         enable = true;
         package = pkgs.incus;
+        ui.enable = true;  # Enable the web UI
 
         # Preseed configuration for Incus
         preseed = {
@@ -118,6 +119,21 @@ in pkgs.testers.nixosTest {
 
     # System configuration
     system.stateVersion = "24.05";
+
+    # Incus Web UI service
+    systemd.services.incus-webui = {
+      description = "Incus Web UI";
+      after = [ "incus.service" "incus-preseed.service" ];
+      requires = [ "incus.service" ];
+      wantedBy = [ "multi-user.target" ];
+      serviceConfig = {
+        Type = "simple";
+        Restart = "on-failure";
+      };
+      script = ''
+        ${pkgs.incus}/bin/incus webui
+      '';
+    };
   };
 
   testScript = ''
@@ -125,11 +141,37 @@ in pkgs.testers.nixosTest {
         """Wait for Incus to be ready"""
         machine.wait_for_unit("incus.service")
         machine.wait_for_unit("incus-preseed.service")
+        machine.wait_for_unit("incus-webui.service")
 
         # Wait for preseed to complete
         machine.wait_until_succeeds("incus profile show default")
         machine.wait_until_succeeds("incus network info incusbr0")
         machine.wait_until_succeeds("incus storage show default")
+
+    def get_incus_webui_url():
+        """Extract the Incus web UI URL with port and token from journalctl"""
+        # Wait for the web UI to start and log its URL
+        machine.wait_until_succeeds(
+            "journalctl -u incus-webui.service | grep 'Web server running at: http://'"
+        )
+        
+        # Extract the URL line from the journal
+        output = machine.succeed(
+            "journalctl -u incus-webui.service -o cat | grep 'Web server running at: http://' | tail -n 1"
+        )
+        
+        # The URL format is like: Web server running at: http://127.0.0.1:XXXXX/ui?access_token=YYYYY
+        import re
+        match = re.search(r'http://[^/]+:\d+/ui\?access_token=[^\\s]+', output)
+        if match:
+            return match.group(0)
+        else:
+            # Fallback to just the base URL without token
+            match = re.search(r'http://[^/]+:\d+', output)
+            if match:
+                return match.group(0)
+            else:
+                raise Exception(f"Could not extract URL from: {output}")
 
     def setup_nixos_image():
         """Set up NixOS container image for testing (offline)"""
@@ -159,11 +201,15 @@ in pkgs.testers.nixosTest {
             machine.succeed("cp -r ${testFiles}/src /tmp/sandbox/")
             machine.succeed("cp ${testFiles}/tsconfig.json /tmp/sandbox/")
 
+        # Get the Incus web UI URL
+        incus_url = get_incus_webui_url()
+        print(f"Discovered Incus URL: {incus_url}")
+
         # Run specific integration tests
         with subtest("Run Incus sandbox create/destroy test"):
-            result = machine.succeed("""
+            result = machine.succeed(f"""
                 cd /tmp/sandbox
-                export INCUS_URL=http://localhost:8443
+                export INCUS_URL="{incus_url}"
                 export NODE_ENV=test
                 export VITEST_TIMEOUT=180000
                 timeout 1800 npx vitest run tests/incus-integration.test.js --reporter=verbose --test-timeout=180000 2>&1

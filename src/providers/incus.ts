@@ -7,6 +7,7 @@ export interface IncusConnectionOptions {
   key?: string;       // Client key path
   serverCert?: string; // Server certificate fingerprint for verification
   project?: string;   // Default project to use
+  token?: string;     // Authentication token for web UI
 }
 
 export class IncusSandbox extends Sandbox {
@@ -18,16 +19,37 @@ export class IncusSandbox extends Sandbox {
   constructor(options?: IncusConnectionOptions) {
     super();
 
-    this.connectionOptions = options || { baseURL: 'http://localhost:8443' };
+    // If INCUS_URL env var is set and no options provided, parse it
+    if (!options && process.env.INCUS_URL) {
+      const urlParts = new URL(process.env.INCUS_URL);
+      const token = urlParts.searchParams.get('access_token');
+      const baseURL = `${urlParts.protocol}//${urlParts.host}`;
+      
+      this.connectionOptions = {
+        baseURL,
+        token: token || undefined,
+        project: 'default'
+      };
+    } else {
+      this.connectionOptions = options || { baseURL: 'http://localhost:8443' };
+    }
+    
     this.project = this.connectionOptions.project || 'default';
 
     // Create axios instance with base configuration
-    this.axiosInstance = axios.create({
+    const axiosConfig: any = {
       baseURL: this.connectionOptions.baseURL,
       timeout: 30000,
-      // Add TLS configuration if provided
-      // httpsAgent: ... (would be configured based on cert/key options)
-    });
+    };
+
+    // Add authentication token if provided
+    if (this.connectionOptions.token) {
+      axiosConfig.headers = {
+        'Authorization': `Bearer ${this.connectionOptions.token}`
+      };
+    }
+
+    this.axiosInstance = axios.create(axiosConfig);
   }
 
   async init(id?: string, createOptions?: CreateSandboxOptions): Promise<void> {
