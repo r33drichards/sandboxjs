@@ -511,57 +511,43 @@ export class IncusSandbox extends Sandbox {
     }
 
     try {
-      // Use a more reliable approach: ls -1 for simple listing, then stat for details
-      const result = await this.runCommand(`find "${path}" -maxdepth 1 -printf '%p %y\n' 2>/dev/null || ls -1 "${path}" 2>/dev/null`, { background: false });
-
-      if ('exitCode' in result && result.exitCode !== 0) {
-        throw new Error(`ls command failed: ${result.output || 'Directory not found or permission denied'}`);
-      }
+      // Use Incus Files API to list directory contents
+      const response = await this.axiosInstance.get(`/1.0/instances/${this.instanceName}/files`, {
+        params: {
+          path: path,
+          project: this.project
+        }
+      });
 
       const entries: FileEntry[] = [];
-      const lines = result.output.split('\n').filter(line => line.trim());
-
-      // Check if we got find output (with types) or plain ls output
-      const usesFindFormat = lines.some(line => line.includes(' f') || line.includes(' d'));
-
-      if (usesFindFormat) {
-        // Parse find output: "path type"
-        for (const line of lines) {
-          if (line.trim()) {
-            const lastSpaceIndex = line.lastIndexOf(' ');
-            if (lastSpaceIndex > 0) {
-              const fullPath = line.substring(0, lastSpaceIndex);
-              const type = line.substring(lastSpaceIndex + 1);
-              const name = fullPath.split('/').pop();
-              
-              if (name && name !== '.' && name !== '..') {
-                entries.push({
-                  type: type === 'd' ? 'directory' : 'file',
-                  name: name
-                });
-              }
-            }
-          }
-        }
-      } else {
-        // Parse plain ls output - need to check each file individually
-        for (const line of lines) {
-          const filename = line.trim();
-          if (filename && filename !== '.' && filename !== '..') {
+      
+      // The Incus Files API returns a list of file/directory names
+      if (Array.isArray(response.data.metadata)) {
+        for (const item of response.data.metadata) {
+          if (typeof item === 'string') {
+            // For each item, we need to check if it's a file or directory
+            // We can do this by making a HEAD request to the file
             try {
-              // Check if it's a directory
-              const testResult = await this.runCommand(`test -d "${path}/${filename}" && echo "directory" || echo "file"`, { background: false });
-              const isDirectory = testResult.output?.trim() === 'directory';
+              const itemPath = path.endsWith('/') ? `${path}${item}` : `${path}/${item}`;
+              const itemResponse = await this.axiosInstance.head(`/1.0/instances/${this.instanceName}/files`, {
+                params: {
+                  path: itemPath,
+                  project: this.project
+                }
+              });
+              
+              // Check the X-LXD-type header to determine if it's a file or directory
+              const fileType = itemResponse.headers['x-lxd-type'];
               
               entries.push({
-                type: isDirectory ? 'directory' : 'file',
-                name: filename
+                type: fileType === 'directory' ? 'directory' : 'file',
+                name: item
               });
-            } catch {
-              // If test fails, assume it's a file
+            } catch (headError) {
+              // If HEAD request fails, assume it's a file
               entries.push({
                 type: 'file',
-                name: filename
+                name: item
               });
             }
           }
@@ -569,8 +555,42 @@ export class IncusSandbox extends Sandbox {
       }
 
       return entries;
-    } catch (error) {
-      throw new Error(`Failed to list files in ${path}: ${error}`);
+    } catch (error: any) {
+      // If Files API fails, fall back to a simple command-based approach
+      if (error.response?.status === 404 || error.response?.status === 500) {
+        try {
+          // Fallback: use a simpler ls command that should work
+          const result = await this.runCommand(`ls -la "${path}" 2>/dev/null | tail -n +2`, { background: false });
+          
+          if ('exitCode' in result && result.exitCode === 0 && result.output) {
+            const entries: FileEntry[] = [];
+            const lines = result.output.split('\n').filter(line => line.trim());
+            
+            for (const line of lines) {
+              if (line.trim()) {
+                const parts = line.trim().split(/\s+/);
+                if (parts.length >= 9) {
+                  const permissions = parts[0];
+                  const name = parts.slice(8).join(' '); // Handle names with spaces
+                  
+                  if (name !== '.' && name !== '..') {
+                    entries.push({
+                      type: permissions.startsWith('d') ? 'directory' : 'file',
+                      name: name
+                    });
+                  }
+                }
+              }
+            }
+            
+            return entries;
+          }
+        } catch (cmdError) {
+          // If both API and command fail, throw the original API error
+        }
+      }
+      
+      throw new Error(`Failed to list files in ${path}: ${error.message || error}`);
     }
   }
 
