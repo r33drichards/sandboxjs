@@ -17,8 +17,9 @@
   "scripts": {
     "build": "tsc",
     "prepublishOnly": "npm run build",
-    "test": "vitest run",
-    "test:watch": "vitest",
+    "test": "vitest run --config vitest.config.ts",
+    "test:watch": "vitest --config vitest.config.ts",
+    "test:integration": "vitest run tests/incus-integration.test.js --config vitest.config.ts --reporter=verbose --test-timeout=180000",
     "generate-client": "openapi-generator-cli generate -i incus-api.yaml -g typescript-axios -o src/generated/incus-client --skip-validate-spec --additional-properties=npmName=incus-client,supportsES6=true,enumPropertyNaming=original,modelPropertyNaming=original",
     "generate-client-from-url": "openapi-generator-cli generate -i $SPEC_URL -g typescript-axios -o src/generated/incus-client --skip-validate-spec --additional-properties=npmName=incus-client,supportsES6=true,enumPropertyNaming=original,modelPropertyNaming=original"
   },

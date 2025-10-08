@@ -335,9 +335,15 @@ export class IncusSandbox extends Sandbox {
             output: '' // Incus doesn't return output through operations API without websockets
           };
         } else if (operation.status === 'Failure') {
-          // Operation failed
+          // Operation failed - provide more specific error information
           const errorMsg = operation.err || 'Operation failed';
           console.error(`Operation ${operationId} failed: ${errorMsg}`);
+          
+          // Check if it's a command not found error specifically
+          if (errorMsg.includes('not found') || errorMsg.includes('No such file')) {
+            throw new Error(`Command not found`);
+          }
+          
           throw new Error(`Operation failed: ${errorMsg}`);
         }
 
@@ -345,8 +351,16 @@ export class IncusSandbox extends Sandbox {
         await new Promise(resolve => setTimeout(resolve, 500));
       } catch (error: any) {
         console.error(`Error checking operation ${operationId} status:`, error.message);
-        // Don't assume success on error - throw the error
-        throw new Error(`Failed to check operation status: ${error.message}`);
+        
+        // If the error is about the operation itself being invalid, don't retry
+        if (error.message.includes('404') || error.message.includes('not found')) {
+          throw new Error(`Operation ${operationId} not found or expired`);
+        }
+        
+        // For other errors, continue retrying until timeout
+        if (Date.now() - startTime >= timeoutMs - 1000) { // Give up 1 second before timeout
+          throw new Error(`Failed to check operation status: ${error.message}`);
+        }
       }
     }
 
@@ -497,27 +511,57 @@ export class IncusSandbox extends Sandbox {
     }
 
     try {
-      // Use exec to run ls command as a workaround since file API might not support listing
-      const result = await this.runCommand(`ls -la "${path}"`, { background: false });
+      // Use a more reliable approach: ls -1 for simple listing, then stat for details
+      const result = await this.runCommand(`find "${path}" -maxdepth 1 -printf '%p %y\n' 2>/dev/null || ls -1 "${path}" 2>/dev/null`, { background: false });
 
       if ('exitCode' in result && result.exitCode !== 0) {
-        throw new Error(`ls command failed: Failed to check operation status: ${result.output || 'Command not found'}`);
+        throw new Error(`ls command failed: ${result.output || 'Directory not found or permission denied'}`);
       }
 
-      // Parse ls output (simplified - in reality you'd want more robust parsing)
-      const lines = result.output.split('\n').slice(1); // Skip total line
       const entries: FileEntry[] = [];
+      const lines = result.output.split('\n').filter(line => line.trim());
 
-      for (const line of lines) {
-        if (line.trim()) {
-          const parts = line.split(/\s+/);
-          if (parts.length >= 9) {
-            const isDirectory = parts[0].startsWith('d');
-            const name = parts.slice(8).join(' ');
-            if (name !== '.' && name !== '..') {
+      // Check if we got find output (with types) or plain ls output
+      const usesFindFormat = lines.some(line => line.includes(' f') || line.includes(' d'));
+
+      if (usesFindFormat) {
+        // Parse find output: "path type"
+        for (const line of lines) {
+          if (line.trim()) {
+            const lastSpaceIndex = line.lastIndexOf(' ');
+            if (lastSpaceIndex > 0) {
+              const fullPath = line.substring(0, lastSpaceIndex);
+              const type = line.substring(lastSpaceIndex + 1);
+              const name = fullPath.split('/').pop();
+              
+              if (name && name !== '.' && name !== '..') {
+                entries.push({
+                  type: type === 'd' ? 'directory' : 'file',
+                  name: name
+                });
+              }
+            }
+          }
+        }
+      } else {
+        // Parse plain ls output - need to check each file individually
+        for (const line of lines) {
+          const filename = line.trim();
+          if (filename && filename !== '.' && filename !== '..') {
+            try {
+              // Check if it's a directory
+              const testResult = await this.runCommand(`test -d "${path}/${filename}" && echo "directory" || echo "file"`, { background: false });
+              const isDirectory = testResult.output?.trim() === 'directory';
+              
               entries.push({
                 type: isDirectory ? 'directory' : 'file',
-                name: name
+                name: filename
+              });
+            } catch {
+              // If test fails, assume it's a file
+              entries.push({
+                type: 'file',
+                name: filename
               });
             }
           }
@@ -538,7 +582,7 @@ export class IncusSandbox extends Sandbox {
     try {
       const result = await this.runCommand(`mv "${path}" "${newPath}"`, { background: false });
       if ('exitCode' in result && result.exitCode !== 0) {
-        throw new Error(`mv command failed: Failed to check operation status: ${result.output || 'Command not found'}`);
+        throw new Error(`mv command failed: ${result.output || 'Move operation failed'}`);
       }
     } catch (error) {
       throw new Error(`Failed to move file from ${path} to ${newPath}: ${error}`);
@@ -568,7 +612,7 @@ export class IncusSandbox extends Sandbox {
     try {
       const result = await this.runCommand(`mkdir -p "${path}"`, { background: false });
       if ('exitCode' in result && result.exitCode !== 0) {
-        throw new Error(`mkdir command failed: Failed to check operation status: ${result.output || 'Command not found'}`);
+        throw new Error(`mkdir command failed: ${result.output || 'Directory creation failed'}`);
       }
     } catch (error) {
       throw new Error(`Failed to create directory ${path}: ${error}`);
