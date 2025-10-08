@@ -553,11 +553,11 @@ export class IncusSandbox extends Sandbox {
                 allHeaderKeys: Object.keys(itemResponse.headers)
               });
               
-              // Check the X-LXD-type header to determine if it's a file or directory
+              // Check the X-Incus-type header to determine if it's a file or directory
               // Try different case variations as headers can be case-sensitive
-              const fileType = itemResponse.headers['x-lxd-type'] || 
-                              itemResponse.headers['X-LXD-type'] ||
-                              itemResponse.headers['X-LXD-Type'];
+              const fileType = itemResponse.headers['x-incus-type'] || 
+                              itemResponse.headers['X-Incus-type'] ||
+                              itemResponse.headers['X-Incus-Type'];
               
               console.log(`[DEBUG] Detected file type for ${item}: ${fileType} (directory check: ${fileType === 'directory'})`);
               
