@@ -512,11 +512,20 @@ export class IncusSandbox extends Sandbox {
 
     try {
       // Use Incus Files API to list directory contents
+      console.log(`[DEBUG] Listing files in path: ${path}`);
+      
       const response = await this.axiosInstance.get(`/1.0/instances/${this.instanceName}/files`, {
         params: {
           path: path,
           project: this.project
         }
+      });
+
+      console.log(`[DEBUG] listFiles API response:`, {
+        status: response.status,
+        dataType: typeof response.data,
+        metadata: response.data.metadata,
+        isMetadataArray: Array.isArray(response.data.metadata)
       });
 
       const entries: FileEntry[] = [];
@@ -529,6 +538,8 @@ export class IncusSandbox extends Sandbox {
             // We can do this by making a HEAD request to the file
             try {
               const itemPath = path.endsWith('/') ? `${path}${item}` : `${path}/${item}`;
+              console.log(`[DEBUG] Checking item: ${item} at path: ${itemPath}`);
+              
               const itemResponse = await this.axiosInstance.head(`/1.0/instances/${this.instanceName}/files`, {
                 params: {
                   path: itemPath,
@@ -536,60 +547,66 @@ export class IncusSandbox extends Sandbox {
                 }
               });
               
+              console.log(`[DEBUG] HEAD response for ${item}:`, {
+                status: itemResponse.status,
+                headers: itemResponse.headers,
+                allHeaderKeys: Object.keys(itemResponse.headers)
+              });
+              
               // Check the X-LXD-type header to determine if it's a file or directory
-              const fileType = itemResponse.headers['x-lxd-type'];
+              // Try different case variations as headers can be case-sensitive
+              const fileType = itemResponse.headers['x-lxd-type'] || 
+                              itemResponse.headers['X-LXD-type'] ||
+                              itemResponse.headers['X-LXD-Type'];
+              
+              console.log(`[DEBUG] Detected file type for ${item}: ${fileType} (directory check: ${fileType === 'directory'})`);
               
               entries.push({
                 type: fileType === 'directory' ? 'directory' : 'file',
                 name: item
               });
-            } catch (headError) {
-              // If HEAD request fails, assume it's a file
-              entries.push({
-                type: 'file',
-                name: item
-              });
+            } catch (headError: any) {
+              console.log(`[DEBUG] HEAD request failed for ${item}:`, headError.response?.status, headError.message);
+              
+              // If HEAD request fails, try to make a GET request to see if it's a directory
+              // Directories will fail GET requests for file content
+              try {
+                const itemPath = path.endsWith('/') ? `${path}${item}` : `${path}/${item}`;
+                const getResponse = await this.axiosInstance.get(`/1.0/instances/${this.instanceName}/files`, {
+                  params: {
+                    path: itemPath,
+                    project: this.project
+                  }
+                });
+                
+                console.log(`[DEBUG] GET request succeeded for ${item}, assuming directory. Response:`, {
+                  status: getResponse.status,
+                  dataType: typeof getResponse.data,
+                  isArray: Array.isArray(getResponse.data?.metadata)
+                });
+                
+                // If GET succeeds, it's a directory (since it returned a listing)
+                entries.push({
+                  type: 'directory',
+                  name: item
+                });
+              } catch (getError: any) {
+                console.log(`[DEBUG] GET request failed for ${item}:`, getError.response?.status, getError.message, '- assuming file');
+                
+                // If GET fails, it's likely a file
+                entries.push({
+                  type: 'file',
+                  name: item
+                });
+              }
             }
           }
         }
       }
 
+      console.log(`[DEBUG] Final entries for ${path}:`, entries);
       return entries;
     } catch (error: any) {
-      // If Files API fails, fall back to a simple command-based approach
-      if (error.response?.status === 404 || error.response?.status === 500) {
-        try {
-          // Fallback: use a simpler ls command that should work
-          const result = await this.runCommand(`ls -la "${path}" 2>/dev/null | tail -n +2`, { background: false });
-          
-          if ('exitCode' in result && result.exitCode === 0 && result.output) {
-            const entries: FileEntry[] = [];
-            const lines = result.output.split('\n').filter(line => line.trim());
-            
-            for (const line of lines) {
-              if (line.trim()) {
-                const parts = line.trim().split(/\s+/);
-                if (parts.length >= 9) {
-                  const permissions = parts[0];
-                  const name = parts.slice(8).join(' '); // Handle names with spaces
-                  
-                  if (name !== '.' && name !== '..') {
-                    entries.push({
-                      type: permissions.startsWith('d') ? 'directory' : 'file',
-                      name: name
-                    });
-                  }
-                }
-              }
-            }
-            
-            return entries;
-          }
-        } catch (cmdError) {
-          // If both API and command fail, throw the original API error
-        }
-      }
-      
       throw new Error(`Failed to list files in ${path}: ${error.message || error}`);
     }
   }
