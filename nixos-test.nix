@@ -38,7 +38,6 @@ let
         curl          # network utilities
         gnutar        # tar command
         gzip          # compression
-        base64        # base64 encoding/decoding (used by file operations)
       ];
 
       # Ensure proper PATH is set for all users
@@ -50,9 +49,7 @@ let
       programs.bash.enable = true;
       
       # Ensure systemd is properly configured
-      systemd.extraConfig = ''
-        DefaultTimeoutStopSec=30s
-      '';
+      systemd.settings.Manager.DefaultTimeoutStopSec = "30s";
     };
   };
 
