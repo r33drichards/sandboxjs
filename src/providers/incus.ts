@@ -632,12 +632,14 @@ export class IncusSandbox extends Sandbox {
     }
 
     try {
-      const result = await this.runCommand(`rm -rf "${path}"`, { background: false });
-      if ('exitCode' in result && result.exitCode !== 0) {
-        throw new Error(`rm command failed: ${result.output}`);
-      }
-    } catch (error) {
-      throw new Error(`Failed to delete file ${path}: ${error}`);
+      await this.axiosInstance.delete(`/1.0/instances/${this.instanceName}/files`, {
+        params: {
+          path: path,
+          project: this.project
+        }
+      });
+    } catch (error: any) {
+      throw new Error(`Failed to delete file ${path}: ${error.message || error}`);
     }
   }
 
