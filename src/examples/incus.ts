@@ -121,7 +121,39 @@ async function main() {
     console.error("Example 3 failed:", error);
   }
 
-  console.log("\n=== Example 4: Connecting to existing instance ===");
+  console.log("\n=== Example 4: TLS Client Certificate Authentication ===");
+
+  // This example shows how to use TLS client certificates for authentication
+  // This is the most secure method and recommended for production use
+  try {
+    // Client certificates are typically stored in ~/.config/incus/ for the CLI
+    // For production use, you would generate and manage these certificates
+    const connectionOptionsWithCert: IncusConnectionOptions = {
+      baseURL: 'https://localhost:8443',
+      cert: '/path/to/client.crt',       // Path to client certificate file
+      key: '/path/to/client.key',        // Path to client private key file
+      serverCert: 'server_fingerprint',  // Optional: server certificate fingerprint
+      project: 'default'
+    };
+
+    console.log("Note: This example requires valid TLS certificates");
+    console.log("To set up client certificate authentication:");
+    console.log("1. Generate a client certificate and key (see docs/incus-tls-setup.md)");
+    console.log("2. Add the certificate to the Incus server's trust store");
+    console.log("3. Use the certificate paths in your connection options");
+    console.log("4. See the integration test in tests/incus-tls-auth.test.js for a working example");
+
+    // Uncomment to test with actual certificates:
+    // const sandbox4a = new IncusSandbox(connectionOptionsWithCert);
+    // await sandbox4a.init(undefined, { template: "alpine/3.18" });
+    // console.log(`Created sandbox with TLS cert: ${sandbox4a.id()}`);
+    // await sandbox4a.destroy();
+
+  } catch (error) {
+    console.error("Example 4 failed:", error);
+  }
+
+  console.log("\n=== Example 5: Connecting to existing instance ===");
 
   try {
     const connectionOptions: IncusConnectionOptions = {
@@ -130,24 +162,24 @@ async function main() {
     };
 
     // First, create an instance and get its ID
-    const sandbox4 = new IncusSandbox(connectionOptions);
-    await sandbox4.init(undefined, { template: "ubuntu/22.04" });
-    const instanceId = sandbox4.id();
+    const sandbox5 = new IncusSandbox(connectionOptions);
+    await sandbox5.init(undefined, { template: "ubuntu/22.04" });
+    const instanceId = sandbox5.id();
     console.log(`Created instance: ${instanceId}`);
 
     // Now connect to the existing instance using its ID
-    const sandbox5 = new IncusSandbox(connectionOptions);
-    await sandbox5.init(instanceId);
-    console.log(`Connected to existing instance: ${sandbox5.id()}`);
+    const sandbox6 = new IncusSandbox(connectionOptions);
+    await sandbox6.init(instanceId);
+    console.log(`Connected to existing instance: ${sandbox6.id()}`);
 
-    // Both sandbox4 and sandbox5 reference the same instance
-    console.log(`Both sandboxes reference same instance: ${sandbox4.id() === sandbox5.id()}`);
+    // Both sandbox5 and sandbox6 reference the same instance
+    console.log(`Both sandboxes reference same instance: ${sandbox5.id() === sandbox6.id()}`);
 
     // Clean up (only need to destroy once)
-    await sandbox4.destroy();
+    await sandbox5.destroy();
     console.log("Instance destroyed");
   } catch (error) {
-    console.error("Example 4 failed:", error);
+    console.error("Example 5 failed:", error);
   }
 }
 
@@ -171,12 +203,12 @@ async function main() {
 //      project: 'default'
 //    });
 //
-// 3. Client Certificate Authentication (Not shown in examples):
+// 3. Client Certificate Authentication (See Example 4):
 //    const sandbox = new IncusSandbox({
 //      baseURL: 'https://localhost:8443',
 //      cert: '/path/to/client.crt',
 //      key: '/path/to/client.key',
-//      serverCert: 'fingerprint',
+//      serverCert: 'fingerprint',  // Optional
 //      project: 'default'
 //    });
 //

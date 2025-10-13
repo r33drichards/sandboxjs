@@ -1,4 +1,6 @@
 import axios, { AxiosInstance } from 'axios';
+import https from 'https';
+import fs from 'fs';
 import { Sandbox, Terminal, FileEntry, CreateSandboxOptions, RunCommandOptions } from "../sandbox.js";
 
 export interface IncusConnectionOptions {
@@ -42,6 +44,27 @@ export class IncusSandbox extends Sandbox {
       timeout: 30000,
       withCredentials: true, // Enable cookies
     };
+
+    // Configure TLS client certificate authentication if provided
+    if (this.connectionOptions.cert && this.connectionOptions.key) {
+      const cert = fs.readFileSync(this.connectionOptions.cert, 'utf8');
+      const key = fs.readFileSync(this.connectionOptions.key, 'utf8');
+
+      const httpsAgentOptions: https.AgentOptions = {
+        cert,
+        key,
+        rejectUnauthorized: false, // We'll handle server cert validation separately
+      };
+
+      // If server certificate fingerprint is provided, validate it
+      if (this.connectionOptions.serverCert) {
+        httpsAgentOptions.rejectUnauthorized = true;
+        // Note: Fingerprint validation would require custom certificate validation
+        // For now, we rely on the standard TLS verification
+      }
+
+      axiosConfig.httpsAgent = new https.Agent(httpsAgentOptions);
+    }
 
     this.axiosInstance = axios.create(axiosConfig);
 

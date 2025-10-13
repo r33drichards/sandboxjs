@@ -336,11 +336,48 @@ incus image list                      # Local images
 - **✅ Destroy Sandbox**: Complete cleanup of containers
 - **❌ Build Templates**: Custom template building not yet implemented
 
+### Authentication Methods
+
+Incus supports three authentication methods:
+
+1. **Local Socket Access** (default): No authentication required for local connections
+2. **Token-based Authentication**: Using web UI session tokens
+3. **TLS Client Certificates**: Mutual TLS authentication (recommended for production)
+
+For detailed setup instructions, see [docs/incus-tls-setup.md](docs/incus-tls-setup.md).
+
+#### Quick Example - Token Authentication
+
+```js
+// Set INCUS_URL with optional auth token
+process.env.INCUS_URL = "http://localhost:8443?auth_token=your_token";
+
+const sandbox = new IncusSandbox(); // Automatically uses INCUS_URL
+await sandbox.init(undefined, { template: "alpine/3.18" });
+```
+
+#### Quick Example - TLS Certificate Authentication
+
+```js
+import { IncusSandbox } from "@gitwit/sandbox";
+
+const sandbox = new IncusSandbox({
+  baseURL: 'https://your-server:8443',
+  cert: '/path/to/client.crt',
+  key: '/path/to/client.key',
+  project: 'default'
+});
+
+await sandbox.init(undefined, { template: "ubuntu/22.04" });
+```
+
+See [src/examples/incus.ts](src/examples/incus.ts) for complete examples of all authentication methods.
+
 ### Notes
 
 - The Incus provider uses direct HTTP API calls to communicate with the Incus daemon
 - WebSocket functionality for command execution and terminals is simplified in the current implementation
-- For production use, configure proper TLS certificates for secure connections
+- For production use, configure proper TLS certificates for secure connections (see [docs/incus-tls-setup.md](docs/incus-tls-setup.md))
 - Incus provides excellent isolation and security compared to other containerization solutions
 
 ## Future Plans
