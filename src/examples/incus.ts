@@ -75,7 +75,53 @@ async function main() {
     console.error("Example 2 failed:", error);
   }
 
-  console.log("\n=== Example 3: Connecting to existing instance ===");
+  console.log("\n=== Example 3: Authentication using INCUS_URL (Integration Test Pattern) ===");
+
+  // This example shows how to authenticate like the integration tests do
+  // The INCUS_URL can include an auth_token parameter for web UI authentication
+  try {
+    // Method 1: Using INCUS_URL environment variable with auth token
+    // Set this before creating the sandbox:
+    // export INCUS_URL="http://localhost:8443?auth_token=your_token_here"
+    //
+    // The IncusSandbox constructor automatically parses INCUS_URL if no options are provided
+    if (process.env.INCUS_URL) {
+      console.log(`Using INCUS_URL from environment: ${process.env.INCUS_URL}`);
+
+      // When you don't pass any options, it automatically uses INCUS_URL
+      const sandbox3a = new IncusSandbox();
+      await sandbox3a.init(undefined, { template: "alpine/3.18" });
+      console.log(`Created sandbox with env auth: ${sandbox3a.id()}`);
+
+      await sandbox3a.destroy();
+      console.log("Sandbox destroyed");
+    }
+
+    // Method 2: Programmatically setting the token in connection options
+    const connectionOptionsWithToken: IncusConnectionOptions = {
+      baseURL: 'http://localhost:8443',
+      token: 'your_auth_token_here',  // Auth token from Incus web UI
+      project: 'default'
+    };
+
+    console.log("\nNote: This example would work if you have a valid auth token");
+    console.log("To get an auth token from Incus web UI:");
+    console.log("1. Access the Incus web UI (usually at https://localhost:8443)");
+    console.log("2. Login with your credentials");
+    console.log("3. The auth token is stored in the session cookie");
+    console.log("4. Pass it via INCUS_URL or connectionOptions.token");
+
+    // Uncomment to test with actual token:
+    // const sandbox3b = new IncusSandbox(connectionOptionsWithToken);
+    // await sandbox3b.init(undefined, { template: "alpine/3.18" });
+    // console.log(`Created sandbox with token: ${sandbox3b.id()}`);
+    // await sandbox3b.destroy();
+
+  } catch (error) {
+    console.error("Example 3 failed:", error);
+  }
+
+  console.log("\n=== Example 4: Connecting to existing instance ===");
 
   try {
     const connectionOptions: IncusConnectionOptions = {
@@ -84,24 +130,24 @@ async function main() {
     };
 
     // First, create an instance and get its ID
-    const sandbox3 = new IncusSandbox(connectionOptions);
-    await sandbox3.init(undefined, { template: "ubuntu/22.04" });
-    const instanceId = sandbox3.id();
+    const sandbox4 = new IncusSandbox(connectionOptions);
+    await sandbox4.init(undefined, { template: "ubuntu/22.04" });
+    const instanceId = sandbox4.id();
     console.log(`Created instance: ${instanceId}`);
 
     // Now connect to the existing instance using its ID
-    const sandbox4 = new IncusSandbox(connectionOptions);
-    await sandbox4.init(instanceId);
-    console.log(`Connected to existing instance: ${sandbox4.id()}`);
+    const sandbox5 = new IncusSandbox(connectionOptions);
+    await sandbox5.init(instanceId);
+    console.log(`Connected to existing instance: ${sandbox5.id()}`);
 
-    // Both sandbox3 and sandbox4 reference the same instance
-    console.log(`Both sandboxes reference same instance: ${sandbox3.id() === sandbox4.id()}`);
+    // Both sandbox4 and sandbox5 reference the same instance
+    console.log(`Both sandboxes reference same instance: ${sandbox4.id() === sandbox5.id()}`);
 
     // Clean up (only need to destroy once)
-    await sandbox3.destroy();
+    await sandbox4.destroy();
     console.log("Instance destroyed");
   } catch (error) {
-    console.error("Example 3 failed:", error);
+    console.error("Example 4 failed:", error);
   }
 }
 
@@ -111,6 +157,33 @@ async function main() {
 // - Other distros: See https://linuxcontainers.org/incus/docs/main/installing/
 //
 // After installation, initialize Incus with: sudo incus admin init --minimal
+//
+// Authentication Methods:
+//
+// 1. Environment Variable (Integration Test Pattern):
+//    export INCUS_URL="http://localhost:8443?auth_token=your_token"
+//    const sandbox = new IncusSandbox(); // Automatically uses INCUS_URL
+//
+// 2. Connection Options with Token:
+//    const sandbox = new IncusSandbox({
+//      baseURL: 'http://localhost:8443',
+//      token: 'your_auth_token',
+//      project: 'default'
+//    });
+//
+// 3. Client Certificate Authentication (Not shown in examples):
+//    const sandbox = new IncusSandbox({
+//      baseURL: 'https://localhost:8443',
+//      cert: '/path/to/client.crt',
+//      key: '/path/to/client.key',
+//      serverCert: 'fingerprint',
+//      project: 'default'
+//    });
+//
+// The integration tests (in tests/incus-integration.test.js) use method 1:
+// - They set INCUS_URL=http://localhost:8443 in the environment
+// - This allows tests to connect to a local Incus instance without hardcoded credentials
+// - The auth token is optional for local unauthenticated access
 if (require.main === module) {
   main().catch(console.error);
 }
