@@ -237,7 +237,7 @@ in pkgs.testers.nixosTest {
 
         with subtest("Run TLS certificate authentication tests"):
             # Run the TLS auth tests with certificate paths
-            result = machine.succeed(f"""
+            result = machine.succeed("""
                 cd /tmp/sandbox
                 export INCUS_URL="https://localhost:8443"
                 export INCUS_CLIENT_CERT="/root/incus-certs/client.crt"

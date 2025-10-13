@@ -35,3 +35,19 @@ jobs:
       env:
         E2B_API_KEY: ${{ secrets.E2B_API_KEY }}
         DAYTONA_API_KEY: ${{ secrets.DAYTONA_API_KEY }}
+
+  nixos-tls-test:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Install Nix
+      uses: cachix/install-nix-action@v25
+      with:
+        extra_nix_config: |
+          experimental-features = nix-command flakes
+
+    - name: Run TLS cert auth test
+      run: nix build .#checks.x86_64-linux.incus-tls-cert-auth -L
