@@ -108,7 +108,7 @@ describe('Incus TLS Client Certificate Authentication Tests', () => {
     };
 
     sandbox = new IncusSandbox(connectionOptions);
-    await sandbox.init(undefined, { template: 'alpine/3.18' });
+    await sandbox.init(undefined, { template: 'nixos/container' });
 
     expect(sandbox).toBeDefined();
     expect(sandbox.id()).toBeDefined();
@@ -132,7 +132,7 @@ describe('Incus TLS Client Certificate Authentication Tests', () => {
     };
 
     sandbox = new IncusSandbox(connectionOptions);
-    await sandbox.init(undefined, { template: 'alpine/3.18' });
+    await sandbox.init(undefined, { template: 'nixos/container' });
 
     const result = await sandbox.runCommand('echo "TLS auth works!"');
 
@@ -157,7 +157,7 @@ describe('Incus TLS Client Certificate Authentication Tests', () => {
     };
 
     sandbox = new IncusSandbox(connectionOptions);
-    await sandbox.init(undefined, { template: 'alpine/3.18' });
+    await sandbox.init(undefined, { template: 'nixos/container' });
 
     const testContent = 'TLS authentication test file';
     const testFile = '/tmp/tls-test.txt';
@@ -196,7 +196,7 @@ describe('Incus TLS Client Certificate Authentication Tests', () => {
     // Expect this to fail during construction or init
     try {
       const invalidSandbox = new IncusSandbox(connectionOptions);
-      await invalidSandbox.init(undefined, { template: 'alpine/3.18' });
+      await invalidSandbox.init(undefined, { template: 'nixos/container' });
 
       // If we get here, fail the test
       expect(true).toBe(false);
@@ -238,7 +238,7 @@ describe('Incus TLS Client Certificate Authentication Tests', () => {
     // The connection might fail if fingerprint doesn't match
     // but we're testing that the option is properly handled
     try {
-      await sandbox.init(undefined, { template: 'alpine/3.18' });
+      await sandbox.init(undefined, { template: 'nixos/container' });
       expect(sandbox.id()).toBeDefined();
     } catch (error) {
       // It's okay if this fails due to fingerprint mismatch
