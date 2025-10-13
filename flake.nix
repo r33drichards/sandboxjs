@@ -73,9 +73,20 @@
           sandboxPackage = sandbox-package;
         };
 
+        checks.incus-tls-cert-auth = import ./nixos-test-tls.nix {
+          inherit pkgs;
+          lib = pkgs.lib;
+          sandboxPackage = sandbox-package;
+        };
+
         apps.test-incus-integration = {
           type = "app";
           program = "${self.checks.${system}.incus-integration}/bin/nixos-test-driver";
+        };
+
+        apps.test-incus-tls-auth = {
+          type = "app";
+          program = "${self.checks.${system}.incus-tls-cert-auth}/bin/nixos-test-driver";
         };
       }
     );
