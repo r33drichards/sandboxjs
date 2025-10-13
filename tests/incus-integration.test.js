@@ -20,7 +20,7 @@ describe('Incus Sandbox Integration Tests', () => {
       }
       sandbox = undefined;
     }
-  }, 60000); // Increase timeout to 60 seconds for cleanup
+  }, 180000); // Increase timeout to 180 seconds for cleanup (needed for suspended instances)
 
   test('create incus sandbox with default template', async () => {
     // Skip if no Incus URL is configured
