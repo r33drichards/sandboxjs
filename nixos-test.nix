@@ -21,7 +21,11 @@ let
       # Building documentation makes the test unnecessarily take a longer time:
       documentation.enable = lib.mkForce false;
 
+      # Containers don't need kernel modules or initrd (they use the host kernel)
       boot.initrd.systemd.enable = false;
+      boot.kernelModules = lib.mkForce [];
+      boot.initrd.kernelModules = lib.mkForce [];
+      boot.initrd.availableKernelModules = lib.mkForce [];
 
       # Essential packages for container functionality
       environment.systemPackages = with pkgs; [
