@@ -10,6 +10,18 @@ export interface CreateSandboxOptions {
   envs?: Record<string, string>;
 }
 
+export interface CreateSnapshotOptions {
+  stateful?: boolean;
+  expiresAt?: string;
+}
+
+export interface SnapshotInfo {
+  name: string;
+  createdAt?: string;
+  stateful?: boolean;
+  size?: number;
+}
+
 export interface RunCommandOptions {
   background?: boolean;
   cwd?: string;
@@ -91,6 +103,12 @@ export abstract class Sandbox {
   abstract createTerminal(
     onOutput: (output: string) => void
   ): Promise<Terminal>;
+
+  // Snapshot operations
+  abstract createSnapshot(name: string, options?: CreateSnapshotOptions): Promise<void>;
+  abstract listSnapshots(): Promise<Array<SnapshotInfo>>;
+  abstract restoreSnapshot(name: string): Promise<void>;
+  abstract deleteSnapshot(name: string): Promise<void>;
 }
 
 export abstract class Terminal {

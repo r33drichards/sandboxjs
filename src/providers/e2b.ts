@@ -192,6 +192,22 @@ export class E2BSandbox extends Sandbox {
     await terminal.init(onOutput);
     return terminal;
   }
+
+  async createSnapshot(): Promise<void> {
+    throw new Error("Snapshots are not supported for E2B provider");
+  }
+
+  async listSnapshots(): Promise<Array<any>> {
+    throw new Error("Snapshots are not supported for E2B provider");
+  }
+
+  async restoreSnapshot(): Promise<void> {
+    throw new Error("Snapshots are not supported for E2B provider");
+  }
+
+  async deleteSnapshot(): Promise<void> {
+    throw new Error("Snapshots are not supported for E2B provider");
+  }
 }
 
 export class E2BTerminal extends Terminal {
