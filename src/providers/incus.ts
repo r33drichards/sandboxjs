@@ -1,5 +1,5 @@
 import axios, { AxiosInstance } from 'axios';
-import { Sandbox, Terminal, FileEntry, CreateSandboxOptions, RunCommandOptions } from "../sandbox.js";
+import { Sandbox, Terminal, FileEntry, CreateSandboxOptions, RunCommandOptions, CreateSnapshotOptions, SnapshotInfo } from "../sandbox.js";
 
 export interface IncusConnectionOptions {
   baseURL: string;
@@ -697,6 +697,121 @@ export class IncusSandbox extends Sandbox {
     const terminal = new IncusTerminal(this.instanceName, this.axiosInstance, this.project);
     await terminal.init(onOutput);
     return terminal;
+  }
+
+  async createSnapshot(name: string, options?: CreateSnapshotOptions): Promise<void> {
+    if (!this.instanceName) {
+      throw new Error("Instance not initialized");
+    }
+
+    const snapshotConfig = {
+      name: name,
+      stateful: options?.stateful || false,
+      expires_at: options?.expiresAt
+    };
+
+    console.log(`Creating snapshot ${name} for instance ${this.instanceName}...`);
+    const response = await this.axiosInstance.post(
+      `/1.0/instances/${this.instanceName}/snapshots`,
+      snapshotConfig,
+      {
+        params: { project: this.project }
+      }
+    );
+
+    // Extract operation ID from response and wait for completion
+    const operationId = response.data.operation?.split('/').pop();
+    if (operationId) {
+      console.log(`Waiting for snapshot creation operation ${operationId} to complete...`);
+      await this.waitForOperation(operationId, 120000); // 2 minutes for snapshot creation
+      console.log(`Snapshot ${name} created successfully`);
+    }
+  }
+
+  async listSnapshots(): Promise<Array<SnapshotInfo>> {
+    if (!this.instanceName) {
+      throw new Error("Instance not initialized");
+    }
+
+    try {
+      // Get list of snapshots with recursion=1 to get full details
+      const response = await this.axiosInstance.get(
+        `/1.0/instances/${this.instanceName}/snapshots`,
+        {
+          params: {
+            project: this.project,
+            recursion: 1
+          }
+        }
+      );
+
+      const snapshots: Array<SnapshotInfo> = [];
+      if (Array.isArray(response.data.metadata)) {
+        for (const snapshot of response.data.metadata) {
+          snapshots.push({
+            name: snapshot.name,
+            createdAt: snapshot.created_at,
+            stateful: snapshot.stateful || false,
+            size: snapshot.size
+          });
+        }
+      }
+
+      return snapshots;
+    } catch (error: any) {
+      throw new Error(`Failed to list snapshots: ${error.message || error}`);
+    }
+  }
+
+  async restoreSnapshot(name: string): Promise<void> {
+    if (!this.instanceName) {
+      throw new Error("Instance not initialized");
+    }
+
+    console.log(`Restoring instance ${this.instanceName} from snapshot ${name}...`);
+
+    // To restore a snapshot, we use PUT on the instance with the restore field
+    const restoreConfig = {
+      restore: name
+    };
+
+    const response = await this.axiosInstance.put(
+      `/1.0/instances/${this.instanceName}`,
+      restoreConfig,
+      {
+        params: { project: this.project }
+      }
+    );
+
+    // Extract operation ID from response and wait for completion
+    const operationId = response.data.operation?.split('/').pop();
+    if (operationId) {
+      console.log(`Waiting for restore operation ${operationId} to complete...`);
+      await this.waitForOperation(operationId, 120000); // 2 minutes for restore operation
+      console.log(`Instance restored from snapshot ${name} successfully`);
+    }
+  }
+
+  async deleteSnapshot(name: string): Promise<void> {
+    if (!this.instanceName) {
+      throw new Error("Instance not initialized");
+    }
+
+    console.log(`Deleting snapshot ${name} for instance ${this.instanceName}...`);
+    const response = await this.axiosInstance.delete(
+      `/1.0/instances/${this.instanceName}/snapshots/${name}`,
+      {
+        params: { project: this.project }
+      }
+    );
+
+    // Extract operation ID from response and wait for completion
+    const operationId = response.data.operation?.split('/').pop();
+    if (operationId) {
+      console.log(`Waiting for snapshot deletion operation ${operationId} to complete...`);
+      await this.waitForOperation(operationId, 60000); // 1 minute for deletion
+      console.log(`Snapshot ${name} deleted successfully`);
+    }
   }
 }
 

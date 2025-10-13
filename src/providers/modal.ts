@@ -206,4 +206,20 @@ export class ModalSandbox extends Sandbox {
   async createTerminal(onOutput: (output: string) => void): Promise<Terminal> {
     throw new Error("Modal sandboxes do not support interactive terminals");
   }
+
+  async createSnapshot(): Promise<void> {
+    throw new Error("Snapshots are not supported for Modal provider");
+  }
+
+  async listSnapshots(): Promise<Array<any>> {
+    throw new Error("Snapshots are not supported for Modal provider");
+  }
+
+  async restoreSnapshot(): Promise<void> {
+    throw new Error("Snapshots are not supported for Modal provider");
+  }
+
+  async deleteSnapshot(): Promise<void> {
+    throw new Error("Snapshots are not supported for Modal provider");
+  }
 }

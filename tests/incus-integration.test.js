@@ -225,4 +225,92 @@ describe('Incus Sandbox Integration Tests', () => {
       expect(error.message).toContain('No accessible IP address found');
     }
   }, 300000);
+
+  test('create and list snapshots', async () => {
+    if (!process.env.INCUS_URL && !process.env.CI) {
+      return;
+    }
+
+    sandbox = await Sandbox.create('incus');
+
+    // Create a snapshot
+    const snapshotName = 'test-snapshot';
+    await sandbox.createSnapshot(snapshotName);
+
+    // List snapshots
+    const snapshots = await sandbox.listSnapshots();
+    expect(snapshots).toBeDefined();
+    expect(Array.isArray(snapshots)).toBe(true);
+    expect(snapshots.some(snap => snap.name === snapshotName)).toBe(true);
+  }, 300000);
+
+  test('create snapshot and restore from it', async () => {
+    if (!process.env.INCUS_URL && !process.env.CI) {
+      return;
+    }
+
+    sandbox = await Sandbox.create('incus');
+
+    // Create a test file
+    const testFile = '/tmp/snapshot-test.txt';
+    const originalContent = 'Original content before snapshot';
+    await sandbox.writeFile(testFile, originalContent);
+
+    // Create snapshot
+    const snapshotName = 'restore-test-snapshot';
+    await sandbox.createSnapshot(snapshotName);
+
+    // Modify the file after snapshot
+    await sandbox.writeFile(testFile, 'Modified content after snapshot');
+    const modifiedContent = await sandbox.readFile(testFile);
+    expect(modifiedContent).toBe('Modified content after snapshot');
+
+    // Restore from snapshot
+    await sandbox.restoreSnapshot(snapshotName);
+
+    // Verify file is restored to original content
+    const restoredContent = await sandbox.readFile(testFile);
+    expect(restoredContent).toBe(originalContent);
+  }, 300000);
+
+  test('delete snapshot', async () => {
+    if (!process.env.INCUS_URL && !process.env.CI) {
+      return;
+    }
+
+    sandbox = await Sandbox.create('incus');
+
+    // Create a snapshot
+    const snapshotName = 'delete-test-snapshot';
+    await sandbox.createSnapshot(snapshotName);
+
+    // Verify snapshot exists
+    let snapshots = await sandbox.listSnapshots();
+    expect(snapshots.some(snap => snap.name === snapshotName)).toBe(true);
+
+    // Delete snapshot
+    await sandbox.deleteSnapshot(snapshotName);
+
+    // Verify snapshot is deleted
+    snapshots = await sandbox.listSnapshots();
+    expect(snapshots.some(snap => snap.name === snapshotName)).toBe(false);
+  }, 300000);
+
+  test('create stateful snapshot', async () => {
+    if (!process.env.INCUS_URL && !process.env.CI) {
+      return;
+    }
+
+    sandbox = await Sandbox.create('incus');
+
+    // Create a stateful snapshot (with runtime state)
+    const snapshotName = 'stateful-test-snapshot';
+    await sandbox.createSnapshot(snapshotName, { stateful: true });
+
+    // List snapshots and verify it exists
+    const snapshots = await sandbox.listSnapshots();
+    const statefulSnapshot = snapshots.find(snap => snap.name === snapshotName);
+    expect(statefulSnapshot).toBeDefined();
+    expect(statefulSnapshot.stateful).toBe(true);
+  }, 300000);
 });
