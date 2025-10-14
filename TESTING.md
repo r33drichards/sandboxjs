@@ -1,6 +1,5 @@
 # Incus Sandbox Integration Testing
 
-This directory contains comprehensive integration tests for the Incus sandbox implementation, including both JavaScript-based tests and NixOS integration tests.
 
 ## Files
 
