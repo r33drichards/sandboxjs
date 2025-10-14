@@ -7,8 +7,6 @@ This directory contains comprehensive integration tests for the Incus sandbox im
 - `tests/incus-integration.test.js` - Vitest-based integration tests for Incus sandbox
 - `nixos-test.nix` - NixOS test module for full system integration testing
 - `flake.nix` - Nix flake with test configurations
-- `run-nixos-test.sh` - Script to run the full NixOS integration test
-- `run-simple-test.sh` - Script to run tests against a local Incus installation
 
 ## Test Overview
 
@@ -32,25 +30,13 @@ The main integration test suite covers:
 
 ## Running Tests
 
-### Option 1: Simple Local Test
 
-If you have Incus installed and running locally:
-
-```bash
-# Initialize Incus (if not done before)
-sudo incus admin init
-
-# Run the simple test
-./run-simple-test.sh
-```
-
-### Option 2: Full NixOS Integration Test
+### Full NixOS Integration Test
 
 For a complete isolated test environment:
 
 ```bash
-# Run the full NixOS test
-./run-nixos-test.sh
+nix flake check --show-trace -L
 ```
 
 This will:
@@ -59,19 +45,6 @@ This will:
 3. Build and run the integration tests
 4. Clean up resources
 
-### Option 3: Manual Testing
-
-```bash
-# Build the project
-npm install
-npm run build
-
-# Set environment variables
-export INCUS_URL=http://localhost:8443
-
-# Run specific tests
-npx vitest run tests/incus-integration.test.js
-```
 
 ## NixOS Test Environment
 
@@ -96,21 +69,6 @@ The NixOS test creates a complete testing environment with:
 - `INCUS_URL`: Incus API endpoint (default: `http://localhost:8443`)
 - `NODE_ENV`: Set to `test` during testing
 - `CI`: If set, tests expect Incus to be available
-
-## Timeouts
-
-- Container creation: 60 seconds
-- Container operations: 60-90 seconds
-- Full test suite: 10 minutes
-- NixOS test VM: 15 minutes
-
-## Error Handling
-
-Tests are designed to:
-- Skip gracefully when Incus is not available
-- Clean up resources even on test failures
-- Provide detailed error messages for debugging
-- Handle network and timing issues in container environments
 
 ## Development
 
