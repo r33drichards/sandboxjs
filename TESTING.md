@@ -25,19 +25,3 @@ This will:
 2. Set up container images and networking
 3. Build and run the integration tests
 4. Clean up resources
-
-
-## Development
-
-To add new tests:
-
-1. Add test cases to `tests/incus-integration.test.js`
-2. Follow the existing patterns for cleanup and error handling
-3. Use appropriate timeouts for container operations
-4. Test both success and failure scenarios
-
-To modify the NixOS test environment:
-
-1. Edit `nixos-test.nix` to change VM configuration
-2. Update the `testScript` for new test scenarios
-3. Rebuild with `nix flake check`
