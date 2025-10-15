@@ -285,6 +285,22 @@ in pkgs.testers.nixosTest {
         machine.wait_until_succeeds("incus network info incusbr0")
         machine.wait_until_succeeds("incus storage show default")
 
+    def wait_for_keycloak():
+        """Wait for Keycloak to be ready"""
+        machine.wait_for_unit("postgresql.service")
+        machine.wait_for_unit("keycloak.service")
+        machine.wait_for_unit("keycloak-realm-import.service")
+
+        # Wait for Keycloak health endpoint
+        machine.wait_until_succeeds(
+            "curl -sf http://localhost:8080/health/ready"
+        )
+
+        # Verify realm was imported
+        machine.wait_until_succeeds(
+            "curl -sf http://localhost:8080/realms/incus-test/.well-known/openid-configuration"
+        )
+
     def get_incus_webui_url():
         """Extract the Incus web UI URL with port and token from journalctl"""
         # Wait for the web UI to start and log its URL
@@ -374,6 +390,9 @@ in pkgs.testers.nixosTest {
         machine.wait_for_unit("multi-user.target")
         machine.wait_until_succeeds("systemctl is-system-running", timeout=60)
 
+    with subtest("Wait for Keycloak to be ready"):
+        wait_for_keycloak()
+
     with subtest("Wait for Incus to be ready"):
         wait_for_incus()
 
@@ -389,6 +408,21 @@ in pkgs.testers.nixosTest {
 
     with subtest("Run sandbox integration tests"):
         run_sandbox_tests()
+
+    with subtest("Run OIDC integration tests"):
+        result = machine.succeed(f"""
+            cd /tmp/sandbox
+            export INCUS_URL="{incus_url}"
+            export NODE_ENV=test
+            export VITEST_TIMEOUT=180000
+            timeout 1800 npx vitest run tests/incus-oidc-integration.test.js --reporter=verbose --test-timeout=180000 2>&1
+        """)
+        print(f"OIDC test results: {result}")
+
+        if "✓" in result or "passed" in result.lower():
+            print("✅ OIDC tests passed!")
+        else:
+            print("⚠️  OIDC tests may have failed - check output above")
 
     with subtest("Clean up"):
         # Clean up any remaining containers
