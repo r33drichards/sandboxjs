@@ -162,7 +162,7 @@ in pkgs.testers.nixosTest {
         http-port = 8080;
         hostname-strict = false;
         hostname-strict-https = false;
-        proxy = "edge";
+        proxy-headers = "xforwarded";
       };
       initialAdminPassword = "admin123";
     };
