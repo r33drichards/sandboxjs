@@ -10,7 +10,7 @@ A unified interface for Linux-based cloud sandbox providers. It can be used to c
 import { Sandbox } from "@gitwit/sandbox";
 
 // Create a new sandbox
-const sandbox = await Sandbox.create("daytona"); // or "codesandbox" or "e2b" or "modal"
+const sandbox = await Sandbox.create("daytona"); // or "codesandbox", "e2b", "modal", or "incus"
 
 // Create a sandbox with custom template
 const customSandbox = await Sandbox.create("e2b", { template: "my-template-id" });
@@ -37,6 +37,7 @@ await sandbox.destroy();
 | **Daytona**     | ✅               | ❌                 | ✅               | ❌               | ❌              | ✅           | ❌               | ✅              | ✅              | ✅              |
 | **CodeSandbox** | ✅               | ✅                 | ✅               | ✅               | ✅              | ✅           | ✅               | ❌              | ❌              | 🚧              |
 | **Modal**       | ✅               | ❌                 | ✅               | ❌               | ❌              | ✅           | ❌               | ❌              | ✅              | 🚧              |
+| **Incus**       | ✅               | ✅                 | ✅               | ✅               | ❌              | ✅           | 🚧               | ✅              | ✅              | ❌              |
 
 ## Getting Started
 
@@ -54,6 +55,9 @@ CODESANDBOX_API_KEY=
 # Get a Modal API token here: https://modal.com/settings/tokens
 MODAL_TOKEN_ID=
 MODAL_TOKEN_SECRET=
+# Incus connection (optional, defaults to localhost:8443)
+INCUS_BASE_URL=https://localhost:8443
+INCUS_PROJECT=default
 ```
 
 ### 2. Install dependencies
@@ -92,7 +96,7 @@ npm test
 
 ```js
 // Create default sandbox
-const sandbox = await Sandbox.create("daytona"); // or "codesandbox" or "e2b" or "modal"
+const sandbox = await Sandbox.create("daytona"); // or "codesandbox", "e2b", "modal", or "incus"
 
 // Create sandbox with additional parameters
 const e2bSandbox = await Sandbox.create("e2b", {
@@ -236,6 +240,108 @@ await buildTemplate('daytona', './my-project', 'my-snapshot', {
 // Use built template
 const sandbox = await Sandbox.create('daytona', { template: 'my-snapshot' });
 ```
+
+## Incus Provider
+
+The Incus provider allows you to run sandboxes using [Incus](https://linuxcontainers.org/incus/), a modern, secure system container and virtual machine manager. Incus provides excellent performance and security for containerized workloads.
+
+### Setup
+
+1. **Install Incus** on your system:
+   ```bash
+   # Ubuntu/Debian
+   sudo snap install incus --classic
+
+   # Or from packages (see https://linuxcontainers.org/incus/docs/main/installing/)
+   ```
+
+2. **Initialize Incus**:
+   ```bash
+   sudo incus admin init --minimal
+   ```
+
+3. **Add your user to the incus group** (optional, for socket access):
+   ```bash
+   sudo usermod -a -G incus $USER
+   newgrp incus
+   ```
+
+### Basic Usage
+
+```js
+import { Sandbox } from "@gitwit/sandbox";
+
+// Create an Incus sandbox with default settings
+const sandbox = await Sandbox.create("incus", {
+  template: "ubuntu/22.04",  // Use Ubuntu 22.04 image
+  envs: {
+    "DEBIAN_FRONTEND": "noninteractive",
+    "MY_CUSTOM_VAR": "hello"
+  }
+});
+
+const { output } = await sandbox.runCommand("echo $MY_CUSTOM_VAR");
+console.log(output); // "hello"
+```
+
+### Advanced Usage with Custom Connection
+
+```js
+import { IncusSandbox } from "@gitwit/sandbox";
+
+const sandbox = new IncusSandbox({
+  baseURL: 'https://your-incus-server:8443',
+  project: 'my-project',
+  // cert: '/path/to/client.crt',     // Optional: client certificate
+  // key: '/path/to/client.key',      // Optional: client key
+  // serverCert: 'fingerprint'        // Optional: server cert fingerprint
+});
+
+await sandbox.init(undefined, {
+  template: "alpine/3.18",
+  envs: { "LANG": "en_US.UTF-8" }
+});
+
+// Sandbox is now ready to use
+console.log(`Created instance: ${sandbox.id()}`);
+```
+
+### Available Images
+
+Incus supports a wide variety of Linux distributions and versions. Common templates include:
+
+- `ubuntu/20.04`, `ubuntu/22.04`, `ubuntu/24.04`
+- `alpine/3.17`, `alpine/3.18`, `alpine/3.19`
+- `debian/11`, `debian/12`
+- `fedora/38`, `fedora/39`
+- `centos/9-Stream`
+- `arch/current`
+
+You can list available images on your Incus server with:
+```bash
+incus image list images: | head -20  # Remote images
+incus image list                      # Local images
+```
+
+### Features
+
+- **✅ File Persistence**: Files persist between suspend/resume cycles
+- **✅ Memory Persistence**: Container state can be preserved when suspending
+- **✅ Read/Write Files**: Full filesystem access within containers
+- **✅ Recursive Delete**: Can delete directories and their contents
+- **❌ Directory Watch**: File system watching not yet implemented
+- **✅ Preview URLs**: Access services running inside containers
+- **🚧 Pseudo-terminals**: Interactive terminal support (basic implementation)
+- **✅ Environment Variables**: Set custom environment variables
+- **✅ Destroy Sandbox**: Complete cleanup of containers
+- **❌ Build Templates**: Custom template building not yet implemented
+
+### Notes
+
+- The Incus provider uses direct HTTP API calls to communicate with the Incus daemon
+- WebSocket functionality for command execution and terminals is simplified in the current implementation
+- For production use, configure proper TLS certificates for secure connections
+- Incus provides excellent isolation and security compared to other containerization solutions
 
 ## Future Plans
 
