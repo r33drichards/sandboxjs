@@ -1,6 +1,6 @@
 import * as CodeSandbox from "@codesandbox/sdk";
 import dotenv from "dotenv";
-import { Sandbox, Terminal, FileEntry, CreateSandboxOptions, RunCommandOptions } from "../sandbox.js";
+import { Sandbox, Terminal, FileEntry, CreateSandboxOptions, RunCommandOptions, SandboxState } from "../sandbox.js";
 
 dotenv.config();
 
@@ -98,6 +98,16 @@ export class CodeSandboxSandbox extends Sandbox {
       throw new Error("Sandbox not initialized");
     }
     await this.sdk.sandboxes.resume(this.sandbox.id);
+  }
+
+  async getState(): Promise<SandboxState> {
+    if (!this.sandbox) {
+      throw new Error("Sandbox not initialized");
+    }
+    // CodeSandbox SDK doesn't expose state directly, so we check if sandbox exists
+    return {
+      status: this.sandbox ? 'Running' : 'Stopped'
+    };
   }
 
   async destroy(): Promise<void> {

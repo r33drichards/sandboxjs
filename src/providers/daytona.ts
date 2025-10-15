@@ -1,7 +1,7 @@
 import * as Daytona from "@daytonaio/sdk";
 import { readFile, writeFile, unlink } from 'fs/promises';
 import { join } from 'path';
-import { Sandbox, FileEntry, Terminal, CreateSandboxOptions, RunCommandOptions } from "../sandbox.js";
+import { Sandbox, FileEntry, Terminal, CreateSandboxOptions, RunCommandOptions, SandboxState } from "../sandbox.js";
 import { findDockerfileName, parseDockerfile } from '../template-builder/utils.js';
 import { SSHClient } from "./utils/ssh.js";
 
@@ -142,6 +142,28 @@ export class DaytonaSandbox extends Sandbox {
       await sandbox.start();
       await sandbox.waitUntilStarted();
     }
+  }
+
+  async getState(): Promise<SandboxState> {
+    const sandbox = this.ensureConnected();
+    let status = 'Unknown';
+
+    switch (sandbox.state) {
+      case Daytona.SandboxState.STARTED:
+        status = 'Running';
+        break;
+      case Daytona.SandboxState.STOPPED:
+        status = 'Stopped';
+        break;
+      case Daytona.SandboxState.STARTING:
+        status = 'Starting';
+        break;
+      case Daytona.SandboxState.STOPPING:
+        status = 'Stopping';
+        break;
+    }
+
+    return { status };
   }
 
   async destroy(): Promise<void> {
