@@ -2,6 +2,8 @@ import { IncusSandbox, IncusConnectionOptions, Sandbox } from "../index.js";
 
 async function main() {
   // Example 1: Using the factory method (requires Incus provider to be registered)
+  // Note: This will automatically use INCUS_URL environment variable if set
+  // Format: INCUS_URL=https://host:port?auth_token=YOUR_AUTH_TOKEN
   console.log("=== Example 1: Using Sandbox.create() ===");
 
   try {
@@ -31,16 +33,20 @@ async function main() {
   console.log("\n=== Example 2: Using direct IncusSandbox constructor ===");
 
   // Example 2: Using the IncusSandbox class directly with custom connection options
+  // If INCUS_URL environment variable is set, it will be used automatically
+  // Format: https://host:port?auth_token=TOKEN
   try {
-    const connectionOptions: IncusConnectionOptions = {
-      baseURL: 'https://localhost:8443',  // Default Incus API endpoint
-      project: 'default',
-      // cert: '/path/to/client.crt',     // Optional client certificate
-      // key: '/path/to/client.key',      // Optional client key
-      // serverCert: 'fingerprint',       // Optional server certificate fingerprint
-    };
-
-    const sandbox2 = new IncusSandbox(connectionOptions);
+    // Option 1: Use INCUS_URL environment variable (recommended)
+    // The IncusSandbox will automatically parse INCUS_URL if no options are provided
+    const sandbox2 = process.env.INCUS_URL
+      ? new IncusSandbox()  // Uses INCUS_URL from environment
+      : new IncusSandbox({  // Fallback to localhost
+          baseURL: 'https://localhost:8443',
+          project: 'default',
+          // cert: '/path/to/client.crt',     // Optional client certificate
+          // key: '/path/to/client.key',      // Optional client key
+          // serverCert: 'fingerprint',       // Optional server certificate fingerprint
+        });
 
     await sandbox2.init(undefined, {
       template: "alpine/3.18",
@@ -78,10 +84,13 @@ async function main() {
   console.log("\n=== Example 3: Connecting to existing instance ===");
 
   try {
-    const connectionOptions: IncusConnectionOptions = {
-      baseURL: 'https://localhost:8443',
-      project: 'default'
-    };
+    // Use INCUS_URL if available, otherwise fallback to localhost
+    const connectionOptions: IncusConnectionOptions | undefined = process.env.INCUS_URL
+      ? undefined  // Let IncusSandbox constructor use INCUS_URL
+      : {
+          baseURL: 'https://localhost:8443',
+          project: 'default'
+        };
 
     // First, create an instance and get its ID
     const sandbox3 = new IncusSandbox(connectionOptions);
@@ -105,12 +114,16 @@ async function main() {
   }
 }
 
-// Note: This example assumes you have an Incus server running locally
-// To run Incus locally, you can install it using:
+// Note: This example uses the INCUS_URL environment variable if available
+// Format: INCUS_URL=https://host:port?auth_token=YOUR_AUTH_TOKEN
+//
+// To run Incus locally:
 // - Ubuntu/Debian: sudo snap install incus --classic
 // - Other distros: See https://linuxcontainers.org/incus/docs/main/installing/
+// - Initialize Incus: sudo incus admin init --minimal
 //
-// After installation, initialize Incus with: sudo incus admin init --minimal
+// To get an authentication token for remote access, use the Incus web UI
+// or configure client certificates as described in the Incus documentation
 if (require.main === module) {
   main().catch(console.error);
 }
