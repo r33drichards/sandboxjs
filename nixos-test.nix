@@ -172,27 +172,54 @@ in pkgs.testers.nixosTest {
         RemainAfterExit = true;
       };
       script = ''
-        # Wait for Keycloak to be ready
+        # Wait for Keycloak to be ready with timeout
+        MAX_ATTEMPTS=60
+        ATTEMPT=0
         until ${pkgs.curl}/bin/curl -sf http://localhost:8080/health/ready > /dev/null 2>&1; do
-          echo "Waiting for Keycloak to be ready..."
+          ATTEMPT=$((ATTEMPT + 1))
+          if [ $ATTEMPT -ge $MAX_ATTEMPTS ]; then
+            echo "ERROR: Keycloak failed to become ready after $MAX_ATTEMPTS attempts (120 seconds)"
+            exit 1
+          fi
+          echo "Waiting for Keycloak to be ready... (attempt $ATTEMPT/$MAX_ATTEMPTS)"
           sleep 2
         done
+        echo "Keycloak is ready"
 
         # Get admin token
-        TOKEN=$(${pkgs.curl}/bin/curl -s -X POST http://localhost:8080/realms/master/protocol/openid-connect/token \
+        TOKEN_RESPONSE=$(${pkgs.curl}/bin/curl -s -X POST http://localhost:8080/realms/master/protocol/openid-connect/token \
           -H "Content-Type: application/x-www-form-urlencoded" \
           -d "username=admin" \
           -d "password=admin123" \
           -d "grant_type=password" \
-          -d "client_id=admin-cli" | ${pkgs.jq}/bin/jq -r .access_token)
+          -d "client_id=admin-cli")
 
-        # Import realm
-        ${pkgs.curl}/bin/curl -X POST http://localhost:8080/admin/realms \
+        TOKEN=$(echo "$TOKEN_RESPONSE" | ${pkgs.jq}/bin/jq -r .access_token)
+
+        # Validate token is not empty or null
+        if [ -z "$TOKEN" ] || [ "$TOKEN" = "null" ]; then
+          echo "ERROR: Failed to retrieve admin token"
+          echo "Token response: $TOKEN_RESPONSE"
+          exit 1
+        fi
+        echo "Admin token retrieved successfully"
+
+        # Import realm with error handling
+        HTTP_CODE=$(${pkgs.curl}/bin/curl -s -w "%{http_code}" -o /tmp/realm-import-response.json \
+          -X POST http://localhost:8080/admin/realms \
           -H "Authorization: Bearer $TOKEN" \
           -H "Content-Type: application/json" \
-          -d @${./keycloak-realm-config.json}
+          -d @${./keycloak-realm-config.json})
 
-        echo "Keycloak realm imported successfully"
+        # Check if HTTP response code is 2xx
+        if [ "$HTTP_CODE" -lt 200 ] || [ "$HTTP_CODE" -ge 300 ]; then
+          echo "ERROR: Realm import failed with HTTP code $HTTP_CODE"
+          echo "Response:"
+          cat /tmp/realm-import-response.json
+          exit 1
+        fi
+
+        echo "Keycloak realm imported successfully (HTTP $HTTP_CODE)"
       '';
     };
 
