@@ -8,6 +8,7 @@ export interface IncusConnectionOptions {
   serverCert?: string; // Server certificate fingerprint for verification
   project?: string;   // Default project to use
   token?: string;     // Authentication token for web UI
+  oidcToken?: string; // OIDC/OAuth2 bearer token
 }
 
 export class IncusSandbox extends Sandbox {
@@ -45,11 +46,16 @@ export class IncusSandbox extends Sandbox {
 
     this.axiosInstance = axios.create(axiosConfig);
 
-    // Add authentication cookie if provided
-    if (this.connectionOptions.token) {
-      // Add request interceptor to include auth cookie
+    // Add authentication if provided
+    if (this.connectionOptions.oidcToken) {
+      // OIDC token uses standard OAuth2 Bearer header
       this.axiosInstance.interceptors.request.use((config) => {
-        // Set cookie header for authentication
+        config.headers['Authorization'] = `Bearer ${this.connectionOptions.oidcToken}`;
+        return config;
+      });
+    } else if (this.connectionOptions.token) {
+      // Legacy web UI token uses cookie
+      this.axiosInstance.interceptors.request.use((config) => {
         config.headers['Cookie'] = `auth_token=${this.connectionOptions.token}`;
         return config;
       });
