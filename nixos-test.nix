@@ -116,6 +116,12 @@ in pkgs.testers.nixosTest {
               driver = "dir";
             }
           ];
+
+          config = {
+            "oidc.issuer" = "http://localhost:8080/realms/incus-test";
+            "oidc.client.id" = "incus-client";
+            "oidc.audience" = "incus-client";
+          };
         };
       };
     };
