@@ -120,6 +120,82 @@ in pkgs.testers.nixosTest {
       };
     };
 
+    # PostgreSQL for Keycloak
+    services.postgresql = {
+      enable = true;
+      package = pkgs.postgresql_15;
+      ensureDatabases = [ "keycloak" ];
+      ensureUsers = [
+        {
+          name = "keycloak";
+          ensureDBOwnership = true;
+        }
+      ];
+      authentication = pkgs.lib.mkOverride 10 ''
+        local all all trust
+        host all all 127.0.0.1/32 trust
+        host all all ::1/128 trust
+      '';
+    };
+
+    # Keycloak service
+    services.keycloak = {
+      enable = true;
+      database = {
+        type = "postgresql";
+        host = "localhost";
+        port = 5432;
+        name = "keycloak";
+        username = "keycloak";
+        passwordFile = pkgs.writeText "keycloak-db-password" "";
+      };
+      settings = {
+        hostname = "localhost";
+        http-enabled = true;
+        http-host = "0.0.0.0";
+        http-port = 8080;
+        hostname-strict = false;
+        hostname-strict-https = false;
+        proxy = "edge";
+      };
+      initialAdminPassword = "admin123";
+    };
+
+    # Import Keycloak realm
+    systemd.services.keycloak-realm-import = {
+      description = "Import Keycloak test realm";
+      after = [ "keycloak.service" ];
+      requires = [ "keycloak.service" ];
+      wantedBy = [ "multi-user.target" ];
+      serviceConfig = {
+        Type = "oneshot";
+        RemainAfterExit = true;
+      };
+      script = ''
+        # Wait for Keycloak to be ready
+        until ${pkgs.curl}/bin/curl -sf http://localhost:8080/health/ready > /dev/null 2>&1; do
+          echo "Waiting for Keycloak to be ready..."
+          sleep 2
+        done
+
+        # Get admin token
+        TOKEN=$(${pkgs.curl}/bin/curl -s -X POST http://localhost:8080/realms/master/protocol/openid-connect/token \
+          -H "Content-Type: application/x-www-form-urlencoded" \
+          -d "username=admin" \
+          -d "password=admin123" \
+          -d "grant_type=password" \
+          -d "client_id=admin-cli" | ${pkgs.jq}/bin/jq -r .access_token)
+
+        # Import realm
+        ${pkgs.curl}/bin/curl -X POST http://localhost:8080/admin/realms \
+          -H "Authorization: Bearer $TOKEN" \
+          -H "Content-Type: application/json" \
+          -d @${./keycloak-realm-config.json}
+
+        echo "Keycloak realm imported successfully"
+      '';
+    };
+
     # System packages
     environment.systemPackages = with pkgs; [
       nodejs_22
