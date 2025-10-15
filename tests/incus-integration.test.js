@@ -318,18 +318,12 @@ describe('Incus Sandbox Integration Tests', () => {
   }, 300000);
 
   test('create and destroy sandbox using client certificate auth', async () => {
-    // Skip if client cert credentials not provided
-    if (!process.env.INCUS_CLIENT_CERT || !process.env.INCUS_CLIENT_KEY || !process.env.INCUS_BASE_URL) {
-      console.warn('INCUS_CLIENT_CERT, INCUS_CLIENT_KEY, or INCUS_BASE_URL not set. Skipping client cert auth test.');
-      return;
-    }
-
     // Import IncusSandbox to use custom connection options
     const { IncusSandbox } = await import('../dist/providers/incus.js');
 
     // Create sandbox with client certificate authentication
     const certSandbox = new IncusSandbox({
-      baseURL: process.env.INCUS_BASE_URL,
+      baseURL: process.env.INCUS_BASE_URL || 'https://localhost:8443',
       cert: process.env.INCUS_CLIENT_CERT,
       key: process.env.INCUS_CLIENT_KEY,
       project: process.env.INCUS_PROJECT || 'default'

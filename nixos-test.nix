@@ -148,6 +148,46 @@ in pkgs.testers.nixosTest {
     # System configuration
     system.stateVersion = "24.05";
 
+    # Generate client certificates for testing
+    systemd.services.incus-generate-client-cert = {
+      description = "Generate Incus client certificate for testing";
+      after = [ "incus.service" "incus-preseed.service" ];
+      requires = [ "incus.service" ];
+      wantedBy = [ "multi-user.target" ];
+      serviceConfig = {
+        Type = "oneshot";
+        RemainAfterExit = true;
+      };
+      script = ''
+        # Create directory for test certificates
+        mkdir -p /tmp/incus-test-certs
+
+        # Generate client certificate and key
+        ${pkgs.openssl}/bin/openssl req -x509 -newkey rsa:4096 \
+          -keyout /tmp/incus-test-certs/client.key \
+          -out /tmp/incus-test-certs/client.crt \
+          -days 365 -nodes \
+          -subj "/CN=test-client"
+
+        # Make files readable
+        chmod 644 /tmp/incus-test-certs/client.crt
+        chmod 600 /tmp/incus-test-certs/client.key
+
+        # Wait for Incus to be fully ready
+        for i in {1..30}; do
+          if ${pkgs.incus}/bin/incus info > /dev/null 2>&1; then
+            break
+          fi
+          sleep 1
+        done
+
+        # Add client certificate to Incus trust store
+        ${pkgs.incus}/bin/incus config trust add-certificate /tmp/incus-test-certs/client.crt || true
+
+        echo "Client certificate generated and added to Incus trust store"
+      '';
+    };
+
     # Incus Web UI service
     systemd.services.incus-webui = {
       description = "Incus Web UI";
@@ -170,11 +210,16 @@ in pkgs.testers.nixosTest {
         machine.wait_for_unit("incus.service")
         machine.wait_for_unit("incus-preseed.service")
         machine.wait_for_unit("incus-webui.service")
+        machine.wait_for_unit("incus-generate-client-cert.service")
 
         # Wait for preseed to complete
         machine.wait_until_succeeds("incus profile show default")
         machine.wait_until_succeeds("incus network info incusbr0")
         machine.wait_until_succeeds("incus storage show default")
+
+        # Verify client certificate was generated
+        machine.wait_until_succeeds("test -f /tmp/incus-test-certs/client.crt")
+        machine.wait_until_succeeds("test -f /tmp/incus-test-certs/client.key")
 
     def get_incus_webui_url():
         """Extract the Incus web UI URL with port and token from journalctl"""
@@ -247,6 +292,10 @@ in pkgs.testers.nixosTest {
             result = machine.succeed(f"""
                 cd /tmp/sandbox
                 export INCUS_URL="{incus_url}"
+                export INCUS_BASE_URL="https://localhost:8443"
+                export INCUS_CLIENT_CERT="/tmp/incus-test-certs/client.crt"
+                export INCUS_CLIENT_KEY="/tmp/incus-test-certs/client.key"
+                export INCUS_PROJECT="default"
                 export NODE_ENV=test
                 export VITEST_TIMEOUT=180000
                 timeout 1800 npx vitest run tests/incus-integration.test.js --reporter=verbose --test-timeout=180000 2>&1
