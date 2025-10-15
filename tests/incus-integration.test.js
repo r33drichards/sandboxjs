@@ -316,4 +316,42 @@ describe('Incus Sandbox Integration Tests', () => {
     expect(statefulSnapshot).toBeDefined();
     expect(statefulSnapshot.stateful).toBe(true);
   }, 300000);
+
+  test('create and destroy sandbox using client certificate auth', async () => {
+    // Skip if client cert credentials not provided
+    if (!process.env.INCUS_CLIENT_CERT || !process.env.INCUS_CLIENT_KEY || !process.env.INCUS_BASE_URL) {
+      console.warn('INCUS_CLIENT_CERT, INCUS_CLIENT_KEY, or INCUS_BASE_URL not set. Skipping client cert auth test.');
+      return;
+    }
+
+    // Import IncusSandbox to use custom connection options
+    const { IncusSandbox } = await import('../dist/providers/incus.js');
+
+    // Create sandbox with client certificate authentication
+    const certSandbox = new IncusSandbox({
+      baseURL: process.env.INCUS_BASE_URL,
+      cert: process.env.INCUS_CLIENT_CERT,
+      key: process.env.INCUS_CLIENT_KEY,
+      project: process.env.INCUS_PROJECT || 'default'
+    });
+
+    // Initialize the sandbox
+    await certSandbox.init(undefined, {
+      template: 'nixos/container'
+    });
+
+    // Verify sandbox was created
+    expect(certSandbox.id()).toBeDefined();
+    expect(typeof certSandbox.id()).toBe('string');
+    expect(certSandbox.id()).toMatch(/^sandbox-\d+-[a-z0-9]+$/);
+
+    // Test basic operations
+    const result = await certSandbox.runCommand('echo "Client cert auth working"');
+    expect(result).toBeDefined();
+    expect(result.exitCode).toBeDefined();
+
+    // Cleanup
+    await certSandbox.destroy();
+    expect(() => certSandbox.id()).toThrow();
+  }, 300000);
 });

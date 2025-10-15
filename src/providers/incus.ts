@@ -1,4 +1,6 @@
 import axios, { AxiosInstance } from 'axios';
+import * as fs from 'fs';
+import * as https from 'https';
 import { Sandbox, Terminal, FileEntry, CreateSandboxOptions, RunCommandOptions, CreateSnapshotOptions, SnapshotInfo } from "../sandbox.js";
 
 export interface IncusConnectionOptions {
@@ -42,6 +44,18 @@ export class IncusSandbox extends Sandbox {
       timeout: 30000,
       withCredentials: true, // Enable cookies
     };
+
+    // Configure HTTPS agent with client certificates if provided
+    if (this.connectionOptions.cert && this.connectionOptions.key) {
+      const httpsAgent = new https.Agent({
+        cert: fs.readFileSync(this.connectionOptions.cert),
+        key: fs.readFileSync(this.connectionOptions.key),
+        // Disable certificate verification for self-signed certificates
+        // In production, you should verify the server certificate
+        rejectUnauthorized: false
+      });
+      axiosConfig.httpsAgent = httpsAgent;
+    }
 
     this.axiosInstance = axios.create(axiosConfig);
 
