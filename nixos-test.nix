@@ -148,10 +148,36 @@ in pkgs.testers.nixosTest {
     # System configuration
     system.stateVersion = "24.05";
 
+    # Configure Incus to listen on HTTPS
+    systemd.services.incus-configure-https = {
+      description = "Configure Incus HTTPS listener";
+      after = [ "incus.service" "incus-preseed.service" ];
+      requires = [ "incus.service" ];
+      wantedBy = [ "multi-user.target" ];
+      serviceConfig = {
+        Type = "oneshot";
+        RemainAfterExit = true;
+      };
+      script = ''
+        # Wait for Incus to be fully ready
+        for i in {1..30}; do
+          if ${pkgs.incus}/bin/incus info > /dev/null 2>&1; then
+            break
+          fi
+          sleep 1
+        done
+
+        # Configure Incus to listen on all addresses (including localhost) on port 8443
+        ${pkgs.incus}/bin/incus config set core.https_address "[::]:8443"
+
+        echo "Incus HTTPS listener configured on port 8443"
+      '';
+    };
+
     # Generate client certificates for testing
     systemd.services.incus-generate-client-cert = {
       description = "Generate Incus client certificate for testing";
-      after = [ "incus.service" "incus-preseed.service" ];
+      after = [ "incus.service" "incus-preseed.service" "incus-configure-https.service" ];
       requires = [ "incus.service" ];
       wantedBy = [ "multi-user.target" ];
       serviceConfig = {
@@ -209,6 +235,7 @@ in pkgs.testers.nixosTest {
         """Wait for Incus to be ready"""
         machine.wait_for_unit("incus.service")
         machine.wait_for_unit("incus-preseed.service")
+        machine.wait_for_unit("incus-configure-https.service")
         machine.wait_for_unit("incus-webui.service")
         machine.wait_for_unit("incus-generate-client-cert.service")
 
@@ -216,6 +243,12 @@ in pkgs.testers.nixosTest {
         machine.wait_until_succeeds("incus profile show default")
         machine.wait_until_succeeds("incus network info incusbr0")
         machine.wait_until_succeeds("incus storage show default")
+
+        # Verify HTTPS listener is configured
+        machine.wait_until_succeeds("incus config get core.https_address | grep 8443")
+
+        # Verify HTTPS port is listening
+        machine.wait_until_succeeds("ss -tlnp | grep ':8443'")
 
         # Verify client certificate was generated
         machine.wait_until_succeeds("test -f /tmp/incus-test-certs/client.crt")

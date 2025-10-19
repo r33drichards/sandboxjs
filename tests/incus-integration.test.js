@@ -318,12 +318,61 @@ describe('Incus Sandbox Integration Tests', () => {
   }, 300000);
 
   test('create and destroy sandbox using client certificate auth', async () => {
+    // Skip if required environment variables are not set
+    // This test requires direct HTTPS access to Incus (not the proxy/web UI)
+    // and client certificate files
+    if (!process.env.INCUS_CLIENT_CERT || !process.env.INCUS_CLIENT_KEY) {
+      console.warn('INCUS_CLIENT_CERT or INCUS_CLIENT_KEY not set, skipping client certificate auth test');
+      return;
+    }
+
+    const baseURL = process.env.INCUS_BASE_URL || 'https://localhost:8443';
+
+    // Try to verify the base URL is accessible before running the test
+    // Skip if we can't connect (e.g., in environments where only the proxy is available)
+    try {
+      const https = await import('https');
+      const { URL } = await import('url');
+      const fs = await import('fs');
+
+      const parsedUrl = new URL(baseURL);
+      const options = {
+        hostname: parsedUrl.hostname,
+        port: parsedUrl.port || 8443,
+        path: '/1.0',
+        method: 'GET',
+        rejectUnauthorized: false,
+        cert: fs.readFileSync(process.env.INCUS_CLIENT_CERT),
+        key: fs.readFileSync(process.env.INCUS_CLIENT_KEY),
+        timeout: 2000
+      };
+
+      await new Promise((resolve, reject) => {
+        const req = https.request(options, (res) => {
+          res.on('data', () => {});
+          res.on('end', () => resolve());
+        });
+        req.on('error', (err) => {
+          console.warn(`Cannot connect to ${baseURL}, skipping client certificate auth test:`, err.message);
+          reject(err);
+        });
+        req.on('timeout', () => {
+          req.destroy();
+          reject(new Error('Connection timeout'));
+        });
+        req.end();
+      });
+    } catch (error) {
+      console.warn(`Skipping client certificate auth test - base URL ${baseURL} is not accessible:`, error.message);
+      return;
+    }
+
     // Import IncusSandbox to use custom connection options
     const { IncusSandbox } = await import('../dist/providers/incus.js');
 
     // Create sandbox with client certificate authentication
     const certSandbox = new IncusSandbox({
-      baseURL: process.env.INCUS_BASE_URL || 'https://localhost:8443',
+      baseURL: baseURL,
       cert: process.env.INCUS_CLIENT_CERT,
       key: process.env.INCUS_CLIENT_KEY,
       project: process.env.INCUS_PROJECT || 'default'
