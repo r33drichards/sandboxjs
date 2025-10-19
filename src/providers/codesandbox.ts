@@ -166,6 +166,22 @@ export class CodeSandboxSandbox extends Sandbox {
     const session = await this.ensureSession();
     return await CodeSandboxTerminal.create(session, onOutput);
   }
+
+  async createSnapshot(): Promise<void> {
+    throw new Error("Snapshots are not supported for CodeSandbox provider");
+  }
+
+  async listSnapshots(): Promise<Array<any>> {
+    throw new Error("Snapshots are not supported for CodeSandbox provider");
+  }
+
+  async restoreSnapshot(): Promise<void> {
+    throw new Error("Snapshots are not supported for CodeSandbox provider");
+  }
+
+  async deleteSnapshot(): Promise<void> {
+    throw new Error("Snapshots are not supported for CodeSandbox provider");
+  }
 }
 
 export class CodeSandboxTerminal extends Terminal {
