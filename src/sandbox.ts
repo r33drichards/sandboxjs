@@ -22,6 +22,11 @@ export interface SnapshotInfo {
   size?: number;
 }
 
+export interface SandboxState {
+  status: string;
+  [key: string]: any;
+}
+
 export interface RunCommandOptions {
   background?: boolean;
   cwd?: string;
@@ -83,6 +88,9 @@ export abstract class Sandbox {
 
   // Resume the sandbox
   abstract resume(): Promise<void>;
+
+  // Get the current state of the sandbox
+  abstract getState(): Promise<SandboxState>;
 
   // Stop and destroy the sandbox
   abstract destroy(): Promise<void>;

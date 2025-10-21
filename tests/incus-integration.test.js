@@ -64,18 +64,26 @@ describe('Incus Sandbox Integration Tests', () => {
     expect(result.exitCode).toBeDefined();
   }, 300000);
 
-  test('suspend and resume incus sandbox', async () => {
+  test('suspend and resume incus sandbox with state verification', async () => {
     if (!process.env.INCUS_URL && !process.env.CI) {
       return;
     }
 
     sandbox = await Sandbox.create('incus');
 
-    // Test suspend
-    await expect(sandbox.suspend()).resolves.not.toThrow();
+    // Get initial state - should be Running
+    let state = await sandbox.getState();
+    expect(state.status).toBe('Running');
 
-    // Test resume
-    await expect(sandbox.resume()).resolves.not.toThrow();
+    // Test suspend - verify instance is actually stopped
+    await sandbox.suspend();
+    state = await sandbox.getState();
+    expect(state.status).toBe('Stopped');
+
+    // Test resume - verify instance is running again
+    await sandbox.resume();
+    state = await sandbox.getState();
+    expect(state.status).toBe('Running');
   }, 300000);
 
   test('file operations in incus sandbox', async () => {
@@ -163,11 +171,17 @@ describe('Incus Sandbox Integration Tests', () => {
     expect(sandbox).toBeDefined();
     expect(sandbox.id()).toBeDefined();
 
-    // Note: Environment variable verification would require proper command execution
-    // This is a placeholder until websocket implementation is complete
+    // Verify environment variables are actually set by running commands
+    const testVarResult = await sandbox.runCommand('echo $INCUS_TEST_VAR');
+    expect(testVarResult.exitCode).toBe(0);
+    expect(testVarResult.output.trim()).toBe('incus_test_value');
+
+    const nodeEnvResult = await sandbox.runCommand('echo $NODE_ENV');
+    expect(nodeEnvResult.exitCode).toBe(0);
+    expect(nodeEnvResult.output.trim()).toBe('incus_testing');
   }, 300000);
 
-  test('destroy incus sandbox', async () => {
+  test('destroy incus sandbox verifies instance is deleted', async () => {
     if (!process.env.INCUS_URL && !process.env.CI) {
       return;
     }
@@ -180,6 +194,12 @@ describe('Incus Sandbox Integration Tests', () => {
 
     // After destroy, the instance name should be null
     expect(() => sandbox.id()).toThrow();
+
+    // Verify the instance no longer exists in Incus by trying to connect
+    await expect(async () => {
+      await Sandbox.connect('incus', sandboxId);
+    }).rejects.toThrow();
+
     sandbox = undefined;
   }, 300000);
 

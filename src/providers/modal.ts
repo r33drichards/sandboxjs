@@ -1,6 +1,6 @@
 import { App, Sandbox as ModalSDKSandbox, Image, Secret } from "modal";
 import dotenv from "dotenv";
-import { Sandbox, Terminal, FileEntry, CreateSandboxOptions, RunCommandOptions } from "../sandbox.js";
+import { Sandbox, Terminal, FileEntry, CreateSandboxOptions, RunCommandOptions, SandboxState } from "../sandbox.js";
 
 dotenv.config();
 
@@ -125,6 +125,12 @@ export class ModalSandbox extends Sandbox {
     // Create a new sandbox from the filesystem snapshot
     const image = new Image(this.imageId);
     this.sandbox = await app.createSandbox(image);
+  }
+
+  async getState(): Promise<SandboxState> {
+    return {
+      status: this.sandbox ? 'Running' : 'Stopped'
+    };
   }
 
   async destroy(): Promise<void> {

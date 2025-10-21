@@ -1,5 +1,5 @@
 import axios, { AxiosInstance } from 'axios';
-import { Sandbox, Terminal, FileEntry, CreateSandboxOptions, RunCommandOptions, CreateSnapshotOptions, SnapshotInfo } from "../sandbox.js";
+import { Sandbox, Terminal, FileEntry, CreateSandboxOptions, RunCommandOptions, CreateSnapshotOptions, SnapshotInfo, SandboxState } from "../sandbox.js";
 
 export interface IncusConnectionOptions {
   baseURL: string;
@@ -260,14 +260,45 @@ export class IncusSandbox extends Sandbox {
       throw new Error("Instance not initialized");
     }
 
+    // For background commands, use the original approach
+    if (options?.background) {
+      const execConfig = {
+        command: ['/run/current-system/sw/bin/bash', '-c', command],
+        environment: {
+          'PATH': '/run/current-system/sw/bin:/run/current-system/sw/sbin:/usr/bin:/bin',
+          ...options?.envs || {}
+        },
+        'wait-for-websocket': false,
+        width: 80,
+        height: 24,
+        user: 0,
+        group: 0,
+        cwd: options?.cwd || '/'
+      };
+
+      const response = await this.axiosInstance.post(`/1.0/instances/${this.instanceName}/exec`, execConfig, {
+        params: { project: this.project }
+      });
+
+      const operationId = response.data.operation?.split('/').pop();
+      return { pid: parseInt(operationId || '0') };
+    }
+
+    // For foreground commands, use a workaround to capture output
+    // Since Incus doesn't return output without websockets, we redirect to a temp file
+    const outputFile = `/tmp/incus-cmd-output-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+    const exitCodeFile = `/tmp/incus-cmd-exitcode-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+
+    // Wrap the command to capture both stdout/stderr and exit code
+    const wrappedCommand = `(${command}) > ${outputFile} 2>&1; echo $? > ${exitCodeFile}`;
+
     const execConfig = {
-      command: ['/run/current-system/sw/bin/bash', '-c', command],
+      command: ['/run/current-system/sw/bin/bash', '-c', wrappedCommand],
       environment: {
-        // Set proper PATH for NixOS
         'PATH': '/run/current-system/sw/bin:/run/current-system/sw/sbin:/usr/bin:/bin',
         ...options?.envs || {}
       },
-      'wait-for-websocket': false, // Don't wait for websocket - use operation polling instead
+      'wait-for-websocket': false,
       width: 80,
       height: 24,
       user: 0,
@@ -281,26 +312,46 @@ export class IncusSandbox extends Sandbox {
       });
 
       const operationId = response.data.operation?.split('/').pop();
-
-      if (options?.background) {
-        // For background commands, we return the operation ID as PID
-        return { pid: parseInt(operationId || '0') };
-      }
-
-      // For foreground commands, poll the operation until completion
       if (operationId) {
-        const result = await this.waitForOperation(operationId, 60000); // 1 minute for command execution
-        return {
-          exitCode: result.exitCode || 0,
-          output: result.output || ''
-        };
-      } else {
-        return {
-          exitCode: 0,
-          output: 'Command executed successfully'
-        };
+        await this.waitForOperation(operationId, 60000);
       }
+
+      // Read the output and exit code from the temp files
+      let output = '';
+      let exitCode = 0;
+
+      try {
+        output = await this.readFile(outputFile);
+      } catch (error) {
+        console.warn(`Failed to read command output from ${outputFile}:`, error);
+      }
+
+      try {
+        const exitCodeStr = await this.readFile(exitCodeFile);
+        exitCode = parseInt(exitCodeStr.trim()) || 0;
+      } catch (error) {
+        console.warn(`Failed to read exit code from ${exitCodeFile}:`, error);
+      }
+
+      // Clean up temp files
+      try {
+        await this.deleteFile(outputFile);
+        await this.deleteFile(exitCodeFile);
+      } catch (error) {
+        console.warn(`Failed to clean up temp files:`, error);
+      }
+
+      return {
+        exitCode,
+        output
+      };
     } catch (error: any) {
+      // Try to clean up temp files even on error
+      try {
+        await this.deleteFile(outputFile).catch(() => {});
+        await this.deleteFile(exitCodeFile).catch(() => {});
+      } catch {}
+
       return {
         exitCode: 1,
         output: error.message || 'Command execution failed'
@@ -405,6 +456,10 @@ export class IncusSandbox extends Sandbox {
     }
 
     await this.startInstance();
+  }
+
+  async getState(): Promise<SandboxState> {
+    return await this.getInstanceState();
   }
 
   async destroy(): Promise<void> {
